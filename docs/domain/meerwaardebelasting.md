@@ -58,6 +58,19 @@ Kovag (https://kovag.be/nieuws/de-meest-gestelde-vragen-over-de-meerwaardebelast
 The FOD Financiën page (https://fin.belgium.be/nl/particulieren/belastingaangifte/inkomsten/meerwaardebelasting)
 couldn't be read automatically; read it by hand.
 
+## Year-end harvesting (implemented, backlog item 6: `engine/harvest.py`)
+
+- Selling lots with a gain up to the unused exemption and buying them back raises their purchase value without tax.
+  Unused exemption is lost at year end except the carry-forward (€1,000).
+- **Anti-abuse**: RSM's analysis of the law: "Ook de toepassing van de algemene antimisbruikbepaling blijft volledig
+  mogelijk." No specific sell-and-buy-back rule found. The app tells the user to check with an adviser and suggests a
+  similar but different fund as the cleaner option.
+  https://www.rsm.global/belgium/nl/insights/wet-tot-invoering-van-een-meerwaardebelasting-op-financiele-activa-belangrijkste-kenmerken-en-praktische-aandachtspunten
+- **Realization date** (trade or settlement date) isn't addressed in the sources found: the app advises leaving a few
+  trading days before 31 December.
+- Losses help only when the year's gains are above the exemption (they offset taxable gain); under the exemption
+  they only shrink the room.
+
 ## Open questions and choices made
 
 - **FIFO vs average for the historical price.** The published-law summaries (LWB) say FIFO. Some earlier

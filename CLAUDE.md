@@ -29,6 +29,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/portfolio.py` | FIFO lots per (broker, asset); own-wallet transfers; ISIN conversions; bond redemption at par; foreign cash from LYNX statements |
 | `src/meerwaarde/engine/tax.py` | TaxRules, unit_acquisition, gain_for, max_without_tax, TaxCalculator |
 | `src/meerwaarde/engine/household.py` | Household (people, ownership shares), exemption carry-forward schedule, per-person tax |
+| `src/meerwaarde/engine/harvest.py` | Year-end harvesting: remaining room per person, cost model, plan, loss flags (D21) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/profile.py` | TaxProfile JSON: partner, ownership, per-year exemption amounts, other sales and income |
 | `src/meerwaarde/taxreport.py` | `tax_year_report()`: everything for one income year, incl. checklist and foreign accounts |
@@ -36,8 +37,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/prices/` | PriceBook (override > statement > online) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
-| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Tax report, Tax years, Prices, Data); profile in `<data dir>/profile.json` |
-| `src/meerwaarde/cli.py` | `meerwaarde report`, `meerwaarde tax-report`, `meerwaarde app`; `--profile` |
+| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Tax report, Tax years, Prices, Data); profile in `<data dir>/profile.json` |
+| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `tax-report`, `app`; `--profile` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
 | `docs/` | domain knowledge and decisions: read the relevant file before changing behaviour |

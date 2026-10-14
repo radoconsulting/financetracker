@@ -95,3 +95,11 @@ income went up (dividends, net of withholding and interest); meerwaardebelasting
 Withholding on an ISIN starting with BE is Belgian roerende voorheffing, not foreign tax: the base stays the gross
 amount and the tax counts as paid (`to_pay` = 30% × taxable − withheld). With the exemption this produces the refund
 the return would give. Fees (exchange connection, money market fund) never enter the meerwaardebelasting.
+
+### D21 · Year-end harvesting: cheapest gain first, keep the €1,000 carry-forward by default (2026-10-14)
+`plan_harvest` fills each person's remaining exemption with whole positions' FIFO lots, picking the position with the
+lowest cost per euro of gain (stock exchange tax on sale and purchase back at the rate the broker charged before,
+two commissions, spread), and drops lines whose 10% saving doesn't beat their costs. €1,000 of room is kept by
+default because the carry-forward gives the same saving without costs (under the `none_used` rule any gain loses it).
+Commission defaults per broker come from Sander's recent orders and can be changed in the app. Cash/FX is left out.
+Joint positions use min(room_p / share_p), as in the simulator.

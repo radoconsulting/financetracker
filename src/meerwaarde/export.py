@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Prices", "How calculated")
+          "Year-end", "Prices", "How calculated")
 
 
 @dataclass
@@ -383,6 +383,65 @@ def _income_tax_sheet(ws, rep: Report):
     _table(ws, INCOME_DETAIL, _records(rep.income_tax_table()), top=top, freeze=False, filters=False)
 
 
+# ---------------------------------------------------------------- year-end harvesting
+HARVEST = [
+    Col("broker", "Broker", width=10), Col("asset", "Asset", width=15), Col("name", "Name", width=36),
+    Col("qty", "Sell and buy back", QTY, 13), Col("price", "Price (€)", PRICE, 13),
+    Col("value", "Value (€)", EUR, 15, "={qty}{r}*{price}{r}"), Col("gain", "Taxable gain (€)", EUR, 15),
+    Col("tob_rate", "Stock exchange tax rate", "0.00%", 12), Col("tob_source", "Rate from", width=26),
+    Col("tob", "Stock exchange tax ×2 (€)", EUR, 15), Col("commission", "Commission ×2 (€)", EUR, 14),
+    Col("spread", "Spread ×2 (€)", EUR, 13), Col("costs", "Costs (€)", EUR, 14, "={tob}{r}+{commission}{r}+{spread}{r}"),
+    Col("saved", "Tax saved later (€)", EUR, 15, "={gain}{r}*$B$3"), Col("net", "Net (€)", EUR, 14, "={saved}{r}-{costs}{r}"),
+]
+LOSSES = [
+    Col("broker", "Broker", width=10), Col("asset", "Asset", width=15), Col("name", "Name", width=36),
+    Col("qty", "Quantity", QTY, 13), Col("value", "Value (€)", EUR, 15), Col("loss", "Taxable loss if sold (€)", EUR, 15),
+    Col("saved", "Tax it removes this year (€)", EUR, 15),
+]
+
+
+def _harvest_sheet(ws, plan) -> None:
+    _write(ws, 1, 1, f"Year-end {plan.year}: use the rest of the exemption", TITLE)
+    _write(ws, 2, 1, "Sell these lots and buy them back before 31 December: their purchase value goes up without tax. "
+                     "Costs: stock exchange tax and commission on both trades, plus the spread.", NOTE)
+    _write(ws, 3, 1, "Rate meerwaardebelasting", BOLD)
+    _write(ws, 3, 2, 0.10, INPUT, PCT, INPUT_FILL)
+    row = 5
+    _header(ws, row, ["Person", "Exemption", "Net gain so far", "Left", "Kept for the carry-forward", "To harvest"])
+    for pid, name in plan.persons:
+        row += 1
+        s = plan.status[pid]
+        for c, v in enumerate([name, s["exemption"], s["net"], s["room"], s["reserve"], s["target"]], 1):
+            _write(ws, row, c, v if c == 1 else round(v, 2), fmt=None if c == 1 else EUR)
+    top = row + 3
+    _write(ws, top - 1, 1, "Proposed sales", SECTION)
+    rows = [dict(broker=l.broker, asset=l.asset, name=l.name, qty=l.qty, price=l.price, gain=round(l.gain, 2),
+                 tob_rate=l.tob_rate, tob_source=l.tob_source, tob=round(l.tob, 2), commission=round(l.commission, 2),
+                 spread=round(l.spread, 2)) for l in plan.lines]
+    first, last, L = _table(ws, HARVEST, rows, top=top, freeze=False)
+    if rows:
+        tr = last + 1
+        _write(ws, tr, 1, "Total", BOLD, border=TOTAL_BORDER)
+        for key in ("value", "gain", "tob", "commission", "spread", "costs", "saved", "net"):
+            c = L[key]
+            col = [cc.key for cc in HARVEST].index(key) + 1
+            _write(ws, tr, col, f"=SUM({c}{first}:{c}{last})", BOLD, EUR, border=TOTAL_BORDER)
+        row = tr + 3
+    else:
+        _write(ws, top + 1, 1, "Nothing worth harvesting with the default settings.", NOTE)
+        row = top + 4
+    if plan.losses:
+        _write(ws, row - 1, 1, "Positions at a taxable loss (they only help when this year's gains are above the exemption)",
+               SECTION)
+        _table(ws, LOSSES, [dict(broker=l.broker, asset=l.asset, name=l.name, qty=l.qty, value=round(l.value, 2),
+                                 loss=round(l.loss, 2), saved=round(l.tax_saved_now, 2)) for l in plan.losses],
+               top=row, freeze=False, filters=False)
+        row = ws.max_row + 2
+    for n in plan.notes:
+        _write(ws, row, 1, "• " + n, NOTE)
+        row += 1
+
+
 # ---------------------------------------------------------------- simulator
 def _simulator(ws, rep: Report, sim: Simulation, R: dict, refs: dict):
     t = R["Meerwaardebelasting"]
@@ -482,6 +541,8 @@ def _explain(ws, rep: Report, sim: Simulation):
         "the 30% Belgian tax to declare.",
         "Simulator: the sales simulated in the app, other sales you entered, and per position the largest quantity you "
         "can still sell without tax.",
+        "Year-end: lots to sell and buy back before 31 December to use the rest of the exemption, with the tax saved "
+        "later against the costs now, and positions at a taxable loss.",
         "Prices: current and 31-12-2025 prices with their date and source.",
     ]:
         line("• " + text)
@@ -539,8 +600,10 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 
 # ---------------------------------------------------------------- workbook
-def build_workbook(rep: Report, simulation: Simulation | None = None) -> Workbook:
+def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None) -> Workbook:
+    from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
+    plan = harvest if harvest is not None else plan_harvest(rep)
     wb = Workbook()
     ws_sum = wb.active
     ws_sum.title = "Summary"
@@ -565,6 +628,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None) -> Workboo
 
     refs = _summary(ws_sum, rep, R)
     _simulator(sheets["Simulator"], rep, sim, R, refs)
+    _harvest_sheet(sheets["Year-end"], plan)
     _explain(sheets["How calculated"], rep, sim)
 
     for ws in wb.worksheets:
@@ -575,9 +639,9 @@ def build_workbook(rep: Report, simulation: Simulation | None = None) -> Workboo
     return wb
 
 
-def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None):
+def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None):
     """Write the workbook to `target` and return its path, or return the bytes when no target is given."""
-    wb = build_workbook(rep, simulation)
+    wb = build_workbook(rep, simulation, harvest)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)

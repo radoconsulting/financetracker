@@ -25,6 +25,10 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   exemption and tax. Sales and income elsewhere, and the figures you declared, go on the **Tax years** tab.
 - **Dividends and interest**: per year, person and broker, with foreign tax, the dividend exemption (shares only)
   and the 30% Belgian tax to declare, because foreign brokers don't withhold it.
+- **Year-end harvesting**: which lots to sell and buy back before 31 December to use the rest of the exemption,
+  with the tax saved later against the costs now (stock exchange tax at the rate your broker charged before,
+  commissions, spread), and which positions at a loss could offset gains when tax is due. One click puts the
+  proposal in the simulator. Command line: `meerwaarde harvest *.pdf`.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 

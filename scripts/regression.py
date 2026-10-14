@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PRIVATE = ROOT / "private"
 sys.path.insert(0, str(ROOT / "src"))
 
+from meerwaarde.engine.harvest import plan_harvest  # noqa: E402
 from meerwaarde.engine.tax import TaxCalculator  # noqa: E402
 from meerwaarde.export import tax_report_xlsx, to_xlsx  # noqa: E402
 from meerwaarde.pdf_report import tax_report_pdf  # noqa: E402
@@ -56,6 +57,9 @@ def metrics() -> dict:
     out["tob"] = {f"{y}|{r.broker}": float(r.amount_eur) for y in (2023, 2024, 2025, 2026) for r in rep.tob_summary(y).itertuples()}
     out["exemption"] = {f"{r.year}|{r.person}": {k: float(getattr(r, k)) for k in ("available", "used", "carry_out")}
                         for r in rep.exemption_table(2027).itertuples()}
+    plan = plan_harvest(rep)
+    out["harvest"] = {"gain": round(plan.gain, 2), "costs": round(plan.costs, 2),
+                      "lines": {f"{l.broker}|{l.asset}": round(l.qty, 8) for l in plan.lines}}
     # smoke tests: the exports must work on the real data (their values are checked by the unit tests)
     to_xlsx(rep)
     for y in (2025, 2026):

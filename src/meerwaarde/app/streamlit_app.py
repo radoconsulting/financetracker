@@ -13,6 +13,7 @@ import streamlit as st
 
 from meerwaarde.engine.portfolio import Portfolio, PortfolioOptions
 from meerwaarde.engine.tax import TaxCalculator, TaxRules
+from meerwaarde.engine.harvest import DEFAULT_COMMISSION, CostModel, plan_harvest
 from meerwaarde.engine.income_tax import CATEGORIES
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.models import LAW_TYPES, law_type
@@ -165,7 +166,7 @@ def money(v):
     return "—" if v is None or pd.isna(v) else f"€{v:,.0f}"
 
 
-tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Tax report", "Tax years", "Prices", "Data"])
+tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Tax report", "Tax years", "Prices", "Data"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -361,8 +362,71 @@ with tabs[3]:
         st.rerun()
     st.caption("The Excel export (sidebar) includes this simulation.")
 
-# ---------------------------------------------------------------- tax report
+# ---------------------------------------------------------------- year-end harvesting
 with tabs[4]:
+    st.subheader(f"Use the rest of the {rules.year} exemption before 31 December")
+    st.caption("Sell lots with a gain up to the exemption you have left and buy them back: their purchase value for the "
+               "meerwaardebelasting goes up without tax. Unused exemption is gone at year end, except €1,000 that carries forward.")
+    h1, h2, h3 = st.columns([1, 1, 2])
+    keep = h1.toggle("Keep €1,000 to carry forward", value=True, key="h-keep",
+                     help="The carry-forward is worth as much as harvesting €1,000, without trading costs.")
+    spread = h2.number_input("Spread per trade (%)", min_value=0.0, max_value=2.0, value=0.05, step=0.01, key="h-spread",
+                             help="Half the difference between bid and ask, paid on the sale and again on the purchase.") / 100
+    hold_keys = {f"{h.broker}|{h.asset}": f"{h.broker} · {h.name}" for h in pf.holdings() if h.asset_class != "Cash/FX"}
+    excl = h3.multiselect("Leave out", list(hold_keys), format_func=lambda k: hold_keys[k], key="h-excl")
+    with st.expander("Commission per order"):
+        cdf = pd.DataFrame([dict(broker=b, fixed=DEFAULT_COMMISSION.get(b, (5.0, 0.001))[0],
+                                 pct=DEFAULT_COMMISSION.get(b, (5.0, 0.001))[1] * 100) for b in brokers])
+        ced = st.data_editor(cdf, hide_index=True, key="h-comm", disabled=["broker"], column_config={
+            "broker": "Broker", "fixed": st.column_config.NumberColumn("Fixed (€)", min_value=0.0),
+            "pct": st.column_config.NumberColumn("Percentage (%)", min_value=0.0, format="%.3f")})
+        st.caption("Defaults from your recent orders: DEGIRO about €1–3, LYNX about €5–8.50, Bitvavo 0.25%. The stock "
+                   "exchange tax uses the rate each broker charged you on that product before.")
+    hc = CostModel(spread=spread, commission={r.broker: (float(r.fixed or 0), float(r.pct or 0) / 100) for r in ced.itertuples()})
+    plan = plan_harvest(rep, keep_carry=keep, costs=hc, exclude=set(excl))
+    for pid, name in plan.persons:
+        s = plan.status[pid]
+        st.caption((f"**{name}** · " if not hh.single else "") +
+                   f"exemption {money(s['exemption'])} · net gain so far {money(s['net'])} · left {money(s['room'])}"
+                   + (f" · kept for the carry-forward {money(s['reserve'])}" if s["reserve"] else "")
+                   + f" · to harvest {money(s['target'])}")
+    c = st.columns(4)
+    c[0].metric("Gain to harvest", money(plan.gain), help="Taxable gain realized now; the purchase value goes up by this much")
+    c[1].metric("Tax saved later", money(plan.tax_saved), help="10% of the harvested gain, if it would otherwise be taxed when you sell later")
+    c[2].metric("Costs now", money(plan.costs), help="Stock exchange tax on the sale and the purchase back, two commissions, spread")
+    c[3].metric("Net benefit", money(plan.net))
+    if plan.lines:
+        st.dataframe(pd.DataFrame([dict(broker=l.broker, name=l.name, qty=l.qty, price=l.price, value=l.value, gain=l.gain,
+                                        tob=f"{l.tob_rate:.2%} ({l.tob_source})", costs=l.costs, saved=l.tax_saved, net=l.net)
+                                   for l in plan.lines]), hide_index=True, width="stretch", column_config={
+            "broker": "Broker", "name": "Position", "qty": st.column_config.NumberColumn("Sell and buy back", format="%.8g"),
+            "price": st.column_config.NumberColumn("Price (€)", format="%.6g"), "value": st.column_config.NumberColumn("Value", format=EUR),
+            "gain": st.column_config.NumberColumn("Taxable gain", format=EUR), "tob": "Stock exchange tax",
+            "costs": st.column_config.NumberColumn("Costs", format=EUR), "saved": st.column_config.NumberColumn("Tax saved later", format=EUR),
+            "net": st.column_config.NumberColumn("Net", format=EUR)})
+        if st.button("Put these sales in the Simulator"):
+            st.session_state.sim = {f"{l.broker}|{l.asset}": {"sell": float(l.qty), "price": None} for l in plan.lines}
+            st.session_state.pop("sim-editor", None)
+            st.toast("Loaded in the Simulator tab")
+            st.rerun()
+    else:
+        st.info("Nothing worth harvesting with these settings.")
+    if plan.losses:
+        with st.expander(f"Positions at a taxable loss ({len(plan.losses)})"):
+            useful = sum(l.tax_saved_now for l in plan.losses)
+            st.caption("Selling these would offset gains realized this year. " + (
+                f"Up to {money(useful)} of this year's tax." if useful else
+                "You're under the exemption this year, so that would only shrink the room you can still use."))
+            st.dataframe(pd.DataFrame([dict(broker=l.broker, name=l.name, qty=l.qty, value=l.value, loss=l.loss, saved=l.tax_saved_now)
+                                       for l in plan.losses]), hide_index=True, width="stretch", column_config={
+                "broker": "Broker", "name": "Position", "qty": st.column_config.NumberColumn("Quantity", format="%.8g"),
+                "value": st.column_config.NumberColumn("Value", format=EUR), "loss": st.column_config.NumberColumn("Taxable loss", format=EUR),
+                "saved": st.column_config.NumberColumn("Tax saved this year", format=EUR)})
+    for n in plan.notes:
+        st.info(n)
+
+# ---------------------------------------------------------------- tax report
+with tabs[5]:
     first_year = min([d.year for d in [t.ts for t in pf.transactions]] + [rules.year])
     years = list(range(max(2024, first_year), max(rules.year, date.today().year) + 1))
     ry = st.selectbox("Income year", years, index=years.index(rules.year) if rules.year in years else len(years) - 1,
@@ -434,7 +498,7 @@ with tabs[4]:
         st.markdown("\n".join(f"- {t}" for t in INCOME_RULES_TEXT))
 
 # ---------------------------------------------------------------- tax years: people, exemption history, other income
-with tabs[5]:
+with tabs[6]:
     st.subheader("People")
     has_partner = st.toggle("Include a partner (each person has their own exemptions)", value=not hh.single)
     partner_name = st.text_input("Partner's name", value=hh.name("partner") if not hh.single else "Partner",
@@ -527,7 +591,7 @@ with tabs[5]:
     st.caption(f"Saved in {PROFILE}. Other sales are counted as financial instruments.")
 
 # ---------------------------------------------------------------- prices
-with tabs[6]:
+with tabs[7]:
     st.subheader("Prices")
     st.caption("Fill in your own price where one is missing or wrong. Your prices are saved and win over every other source.")
     rows = []
@@ -559,7 +623,7 @@ with tabs[6]:
                 st.markdown(f"- {e}")
 
 # ---------------------------------------------------------------- data
-with tabs[7]:
+with tabs[8]:
     st.subheader("Rows read from your files")
     tdf = pd.DataFrame([t.as_dict() for t in pf.transactions])
     kinds = sorted(tdf.kind.unique()) if not tdf.empty else []
@@ -574,7 +638,7 @@ with tabs[7]:
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
     st.subheader("Export")
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim), file_name=default_name(rep),
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan), file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
                             "and how everything is calculated.")

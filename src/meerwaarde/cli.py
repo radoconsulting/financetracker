@@ -95,6 +95,34 @@ def cmd_report(a):
         print(f"Excel workbook written to {to_xlsx(rep, _out_path(a.xlsx, a.out, default_name(rep)))}")
 
 
+def cmd_harvest(a):
+    from .engine.harvest import CostModel, plan_harvest
+    rep = _build(a)
+    plan = plan_harvest(rep, keep_carry=not a.use_all, costs=CostModel(spread=a.spread), exclude=set(a.exclude or []))
+    print(f"\nYear-end {plan.year}: use the rest of the exemption before 31 December")
+    for pid, name in plan.persons:
+        s = plan.status[pid]
+        who = "" if len(plan.persons) == 1 else f"{name}: "
+        print(f"  {who}exemption {_eur(s['exemption'])}, net gain so far {_eur(s['net'])}, left {_eur(s['room'])}"
+              + (f", kept for the carry-forward {_eur(s['reserve'])}" if s["reserve"] else "") + f", to harvest {_eur(s['target'])}")
+    if plan.lines:
+        print("\n  Sell and buy back:")
+        for l in plan.lines:
+            print(f"  {l.broker:<8} {l.name[:42]:<42} {l.qty:>12.8g} × {l.price:>10,.4f}  gain {_eur(l.gain):>11}  "
+                  f"costs {_eur(l.costs):>9} (stock exchange tax {l.tob_rate:.2%}, {l.tob_source})  net {_eur(l.net)}")
+        print(f"\n  Gain harvested {_eur(plan.gain)} · tax saved later up to {_eur(plan.tax_saved)} · costs {_eur(plan.costs)}"
+              f" · net {_eur(plan.net)}")
+    else:
+        print("  Nothing worth harvesting.")
+    if plan.losses:
+        print("\n  Positions at a taxable loss:")
+        for l in plan.losses:
+            print(f"  {l.broker:<8} {l.name[:42]:<42} loss {_eur(l.loss):>11}  tax it removes this year {_eur(l.tax_saved_now)}")
+    print()
+    for n in plan.notes:
+        print("  Note: " + n)
+
+
 def cmd_tax_report(a):
     _check_name(a.xlsx, ".xlsx", "--xlsx")
     _check_name(a.pdf, ".pdf", "--pdf")
@@ -170,6 +198,13 @@ def main(argv=None):
                    help="write an Excel workbook (default name meerwaarde-<date>.xlsx, in --out when given)")
     r.add_argument("-v", "--verbose", action="store_true", help="show all notes about the data")
     r.set_defaults(func=cmd_report)
+
+    h = sub.add_parser("harvest", help="Year-end: which lots to sell and buy back to use the rest of this year's exemption")
+    common(h)
+    h.add_argument("--use-all", action="store_true", help="also use the €1,000 that would otherwise carry forward")
+    h.add_argument("--spread", type=float, default=0.0005, help="half the bid-ask spread per trade, as a fraction (default 0.0005)")
+    h.add_argument("--exclude", action="append", metavar="ASSET", help="leave out an ISIN or ticker (repeatable)")
+    h.set_defaults(func=cmd_harvest)
 
     t = sub.add_parser("tax-report", help="Yearly tax report (meerwaardebelasting, dividends and interest, stock exchange "
                                           "tax, checklist) as Excel and PDF")
