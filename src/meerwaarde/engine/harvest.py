@@ -8,7 +8,8 @@ and on the purchase back, commissions, spread), and flags losses that could offs
 Choices (docs/decisions.md D21):
 - Positions are picked by cost per euro of gain (cheapest first); FIFO decides which lots go first within a position.
 - By default €1,000 of room is kept so the carry-forward isn't lost (it's worth the same as harvesting it, without
-  costs). Cash/FX positions are left out.
+  costs). Cash/FX positions and insurance contracts (a policy can't be bought back at market cost) are left out of
+  the plan; an insurance contract at a loss is still flagged.
 - The stock exchange tax rate per position comes from what the broker charged on earlier trades of that product
   (DEGIRO account statement, LYNX statement); otherwise the standard rate for its class.
 """
@@ -22,6 +23,7 @@ from .tax import gain_for
 
 TOB_CAPS = {0.0012: 1300.0, 0.0035: 1600.0, 0.0132: 4000.0}
 DEFAULT_TOB = {"ETF": 0.0012, "Bond ETF": 0.0012, "Fund": 0.0012, "Bond": 0.0012, "Stock": 0.0035, "Turbo": 0.0035}
+SKIP_CLASSES = ("Cash/FX", "Insurance")      # never proposed for selling and buying back
 DEFAULT_COMMISSION = {"DEGIRO": (3.0, 0.0), "LYNX": (8.5, 0.0), "Bitvavo": (0.0, 0.0025)}   # per order: fixed €, fraction
 
 
@@ -166,7 +168,7 @@ def plan_harvest(rep, keep_carry: bool = True, costs: CostModel | None = None, e
     # candidates
     cands = []
     for h in rep.portfolio.holdings():
-        if h.asset_class == "Cash/FX" or h.asset in exclude or f"{h.broker}|{h.asset}" in exclude:
+        if h.asset_class in SKIP_CLASSES or h.asset in exclude or f"{h.broker}|{h.asset}" in exclude:
             continue
         now = rep.prices.now(h)
         if not now or not now.value:

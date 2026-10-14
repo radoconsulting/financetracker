@@ -10,6 +10,7 @@ from .engine.household import ExemptionYear, exemption_schedule, summarize_peopl
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
 from .engine.tax import TaxCalculator, TaxRules
+from .manual import ManualBook
 from .models import BUY, LAW_TYPES, SELL, law_type
 from .parsers import combine, parse_file
 from .prices import PriceBook
@@ -299,16 +300,21 @@ class Report:
 
 def build_report(files, fetch_prices: bool = True, cache_dir=None, options: PortfolioOptions | None = None,
                  rules: TaxRules | None = None, overrides_csv: str | None = None, today: date | None = None,
-                 parsed: list | None = None, profile: TaxProfile | None = None) -> Report:
-    """`rules.exemption` is the base exemption of `rules.year`; pass rules=None to take it from the profile."""
+                 parsed: list | None = None, profile: TaxProfile | None = None,
+                 manual: ManualBook | None = None) -> Report:
+    """`rules.exemption` is the base exemption of `rules.year`; pass rules=None to take it from the profile.
+    `manual`: positions no export covers; they are added after the exports are combined (never deduplicated)."""
     results = parsed if parsed is not None else [parse_file(f) for f in files]
     txns, statements, warnings = combine(results)
-    pf = Portfolio(txns, statements, options)
+    manual = manual or ManualBook()
+    pf = Portfolio(txns + manual.transactions(), statements, options)
+    warnings = warnings + manual.warnings()
     profile = profile or TaxProfile()
     if rules is None:
         rules = TaxRules()
         rules.exemption = profile.exemption_rules().base_for(rules.year)
     pb = PriceBook(statements, fetch=fetch_prices, cache_dir=cache_dir, reference_date=rules.reference_date, today=today)
+    manual.apply_prices(pb)
     if overrides_csv:
         pb.load_overrides_csv(overrides_csv)
     calc = TaxCalculator(pf, pb, rules, today=today)

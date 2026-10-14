@@ -1,6 +1,7 @@
 """Prices for valuing holdings and for the 31-12-2025 reference value.
 
-Order of preference for every price: your own override, the broker statement, then
+Order of preference for every price: your own override, the price entered with a manual position, the broker
+statement, then
 online sources (Bitvavo for crypto, justETF for ETFs, Yahoo Finance for shares,
 the ECB for exchange rates). Every price carries its date and source.
 """
@@ -32,6 +33,8 @@ class PriceBook:
         self.fetcher = Fetcher(cache_dir=cache_dir) if fetch else None
         self.overrides_now: dict[str, float] = {}
         self.overrides_ref: dict[str, float] = {}
+        self.manual_now: dict[str, Price] = {}       # prices entered with a manual position (manual.py)
+        self.manual_ref: dict[str, Price] = {}
         self.errors: list[str] = []
         self._now_cache: dict = {}
         self._ref_cache: dict = {}
@@ -42,6 +45,16 @@ class PriceBook:
             self.overrides_now[asset] = float(now)
         if reference is not None:
             self.overrides_ref[asset] = float(reference)
+        self._now_cache.pop(asset, None)
+        self._ref_cache.pop(asset, None)
+
+    def set_manual(self, asset: str, now: float | None = None, now_date: date | None = None,
+                   reference: float | None = None):
+        """Price entered with a manual position: below an override, above statements and online sources."""
+        if now is not None:
+            self.manual_now[asset] = Price(float(now), now_date or self.today, "Your entry (manual position)")
+        if reference is not None:
+            self.manual_ref[asset] = Price(float(reference), self.reference_date, "Your entry (manual position)")
         self._now_cache.pop(asset, None)
         self._ref_cache.pop(asset, None)
 
@@ -97,6 +110,8 @@ class PriceBook:
         a = h.asset
         if a in self.overrides_now:
             return Price(self.overrides_now[a], self.today, "Your price")
+        if a in self.manual_now:
+            return self.manual_now[a]
         if h.asset_class == "Cash/FX" and len(a) == 3:
             r = self.eur_per(a, self.today) or self._statement_fx(a)
             return Price(r, self.today, "ECB / statement rate") if r else None
@@ -152,6 +167,8 @@ class PriceBook:
         a, ref = h.asset, self.reference_date
         if a in self.overrides_ref:
             return Price(self.overrides_ref[a], ref, "Your price")
+        if a in self.manual_ref:
+            return self.manual_ref[a]
         # statement that starts the day after the reference date: its 'prior' prices are the reference prices
         for s in self.statements:
             if s.period_start and s.period_start - timedelta(days=1) == ref:
