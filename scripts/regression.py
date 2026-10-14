@@ -19,6 +19,7 @@ PRIVATE = ROOT / "private"
 sys.path.insert(0, str(ROOT / "src"))
 
 from meerwaarde.engine.tax import TaxCalculator  # noqa: E402
+from meerwaarde.export import to_xlsx  # noqa: E402
 from meerwaarde.report import build_report  # noqa: E402
 
 TOLERANCE = 0.05
@@ -46,6 +47,7 @@ def metrics() -> dict:
                               for h in rep.portfolio.holdings()}
     out["rows"] = {f"{k[0]}|{k[1]}": n for k, n in sorted(Counter((t.broker, t.kind) for t in rep.portfolio.transactions).items())}
     out["warnings"] = len(rep.warnings)
+    to_xlsx(rep)    # smoke test: the Excel export must work on the real data (values are checked by the tests)
     return out
 
 

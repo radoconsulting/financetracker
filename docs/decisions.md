@@ -46,3 +46,12 @@ installation and the Docker image simple.
 ### D11 · Price sources: override > statement > online (2026-10-14)
 Every price carries date and source. Online sources are unofficial where no official API exists (justETF,
 Yahoo); the user can always override.
+
+### D12 · Excel export: engine results as values, arithmetic and totals as formulas (2026-10-14)
+`export.py` writes the workbook with openpyxl (now a core dependency). FIFO costs, purchase values for the tax,
+taxable gains and "max without tax" are values (formulas can't do FIFO); value = qty × price, profit =
+proceeds − cost and every total are formulas (SUMIFS over the data sheets), so editing a price, the exemption or
+the rate in Excel stays consistent. Inputs are blue on yellow. `fullCalcOnLoad` makes Excel compute on open.
+Checked once with LibreOffice on the real exports: 332 formulas, no errors, totals equal the regression baseline.
+The simulator logic moved from the app to `Report.simulate()` so the app and the export share it. The app's
+download button builds the file only when clicked (callable `data`), which needs Streamlit ≥ 1.65.

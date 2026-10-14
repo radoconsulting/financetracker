@@ -17,6 +17,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   you sold everything today, per asset type as the law defines them.
 - **Simulator**: enter quantities to sell (and, if you like, a different price) and see the taxable gain,
   the tax-free room left, and for every position the largest quantity you can still sell without tax.
+- **Excel export**: one workbook with a summary, open positions, sales, income, the meerwaardebelasting per
+  line, your current simulation, prices and a "How calculated" sheet. Totals are formulas, so changing the
+  exemption, the rate or a price in Excel updates them.
 
 ### Rules it applies
 
@@ -70,8 +73,26 @@ meerwaarde report Volledige_geschiedenis.pdf Transactions.pdf LYNX_2023.pdf LYNX
     --out results/            # writes realized.csv, holdings.csv, income.csv, cash.csv, meerwaardebelasting.csv, summary.csv
 ```
 
-Options: `--prices my_prices.csv`, `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
+Options: `--xlsx [FILE]` for the Excel workbook (default `meerwaarde-<date>.xlsx`, in the `--out` folder when
+given), `--prices my_prices.csv`, `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
 `--withdrawals-are-sales`, `-v` for all notes.
+
+### Excel workbook
+
+In the app: **Export → Excel workbook** in the sidebar (it includes the simulation on the Simulator tab).
+On the command line: `--xlsx`. In a notebook: `from meerwaarde.export import to_xlsx; to_xlsx(rep, "out.xlsx")`.
+
+| Sheet | What |
+|---|---|
+| Summary | Profit per broker and per year, meerwaardebelasting if you sold everything; exemption and rate can be changed |
+| Positions, Sales, Income | The app's tables, with filters and frozen headers |
+| Meerwaardebelasting | Every sale this year and every open position: purchase value used and taxable gain |
+| Simulator | The simulated sales, other sales (editable) and the largest quantity per position without tax |
+| Prices | Current and 31-12-2025 prices with date and source |
+| How calculated | Rules, settings, files read and notes about your data |
+
+Results of the calculation (first-in-first-out costs, taxable gains) are values; arithmetic on them and every
+total is a formula. Excel recalculates when the file opens.
 
 ### In a notebook
 

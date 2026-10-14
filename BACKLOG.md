@@ -18,11 +18,6 @@ What you owe on income that foreign brokers don't withhold Belgian tax on.
 - The €833-style dividend exemption (indexed) applied to dividends from shares only, not from funds or ETFs.
 - Amounts grouped the way the tax return asks for them.
 
-### 3. Excel export · S
-One workbook with a sheet per table: summary, realized, open positions, income, meerwaardebelasting,
-simulator result. Formatted euro columns, frozen headers, a "how calculated" sheet. Available from the app and
-as `meerwaarde report --xlsx`.
-
 ### 4. Exemption over the years · M
 - Keep a history of realized gains per tax year so unused exemption carries forward (+€1,000 a year, at most
   €15,000), and show the exemption available this year with how it was built up.
@@ -83,3 +78,7 @@ and the same deposits invested in a benchmark such as MSCI ACWI for comparison.
 ### 15. Allocation look-through · M
 Exposure by region, sector, currency and asset class, looking through ETFs to their holdings, plus the overlap
 between ETFs (for example S&P 500 inside MSCI World inside ACWI).
+
+## Done
+
+- 3. Excel export · done 2026-10-14 · `meerwaarde report --xlsx`, sidebar button in the app; totals are live formulas, engine results are values (docs/decisions.md D12).

@@ -12,12 +12,13 @@ import pandas as pd
 import streamlit as st
 
 from meerwaarde.engine.portfolio import Portfolio, PortfolioOptions
-from meerwaarde.engine.tax import TaxCalculator, TaxRules, gain_for
+from meerwaarde.engine.tax import TaxCalculator, TaxRules
+from meerwaarde.export import XLSX_MIME, default_name, to_xlsx
 from meerwaarde.models import LAW_TYPES, law_type
 from meerwaarde.parsers import combine, parse_file
 from meerwaarde.prices import PriceBook
 from meerwaarde.prices.fetch import Fetcher
-from meerwaarde.report import Report
+from meerwaarde.report import RULES_TEXT, Report
 
 st.set_page_config(page_title="Meerwaarde", page_icon="📈", layout="wide")
 
@@ -274,14 +275,7 @@ with tabs[2]:
         st.warning("Some lines are missing a price, so their gain is incomplete. Add the price on the Prices tab.")
     st.download_button("Download (CSV)", lines_df.to_csv(index=False), "meerwaardebelasting.csv", "text/csv")
     with st.expander("How it's calculated"):
-        st.markdown("""
-- 10% on the net gain realized in the tax year above the exemption, per person. Partners each have their own exemption for assets they own.
-- Units held before 2026 use the closing price of 31-12-2025 as purchase value. If you originally paid more, that price applies instead for sales until the end of 2030, but only to reduce a gain: a loss is always measured from the 31-12-2025 price.
-- Units bought from 2026 use their purchase price. First in, first out per broker. Commissions and stock exchange tax are left out.
-- Financial instruments, insurance contracts, crypto-assets, currency and investment gold form one regime. Losses offset gains within the year and don't carry over.
-- Not included: the 33% regime for internal capital gains, holdings of 20% or more in a company, Reynders tax on bond funds, and income tax on staking rewards. Units received in the tax year without a purchase price count at zero cost.
-- This is a calculation from your exports, not tax advice.
-""")
+        st.markdown("\n".join(f"- {t}" for t in RULES_TEXT))
 
 # ---------------------------------------------------------------- simulator
 with tabs[3]:
@@ -314,8 +308,8 @@ with tabs[3]:
 
     sell = {tuple(k.split("|", 1)): v["sell"] for k, v in state.items() if v.get("sell")}
     price_over = {tuple(k.split("|", 1)): v["price"] for k, v in state.items() if v.get("price")}
-    sim_lines = [l for l in calc.open_lines(sell=sell, price_override=price_over) if l.qty > 0]
-    summ = TaxCalculator.summarize(sold_lines + sim_lines, rules, extra)
+    sim = rep.simulate(sell=sell, price_override=price_over, extra=extra)
+    sim_lines, summ = sim.lines, sim.summary
     room = rules.exemption - summ["net"]
     c = st.columns(4)
     c[0].metric("Tax-free room left", money(max(0.0, room)) if room >= 0 else "€0",
@@ -326,21 +320,10 @@ with tabs[3]:
     st.progress(min(1.0, max(0.0, summ["net"] / rules.exemption)) if rules.exemption else 1.0,
                 text=f"{money(max(0.0, summ['net']))} of the {money(rules.exemption)} exemption used")
 
-    sold_net = sum(l.taxable_gain for l in sold_lines) + sum(extra.values())
-    out = []
-    for h in hold.values():
-        k = (h.broker, h.asset)
-        line = next((l for l in sim_lines if l.key == k), None)
-        others = sum(l.taxable_gain for l in sim_lines if l.key != k)
-        r = max(0.0, rules.exemption - sold_net - others)
-        pr = price_over.get(k) or (pb.now(h).value if pb.now(h) else None)
-        m = calc.max_without_tax(h, r, pr) if pr else 0.0
-        out.append(dict(key=f"{h.broker}|{h.asset}", broker=h.broker, name=h.name, sell=sell.get(k, 0.0),
-                        gain=line.taxable_gain if line else 0.0, proceeds=line.proceeds if line else 0.0,
-                        max_qty=m, max_value=m * pr if pr else None))
-    out_df = pd.DataFrame(out).sort_values("max_value", ascending=False, na_position="last")
+    out_df = sim.positions
     st.dataframe(out_df, hide_index=True, width="stretch", column_config={
-        "key": None, "name": "Position", "sell": st.column_config.NumberColumn("Selling", format="%.8g"),
+        "key": None, "asset": None, "type": None, "held": None, "price": None,
+        "name": "Position", "sell": st.column_config.NumberColumn("Selling", format="%.8g"),
         "gain": st.column_config.NumberColumn("Taxable gain", format=EUR),
         "proceeds": st.column_config.NumberColumn("Proceeds", format=EUR),
         "max_qty": st.column_config.NumberColumn("Max without tax", format="%.8g", help="Largest quantity you can sell from this position on top of everything else, without paying tax"),
@@ -356,6 +339,7 @@ with tabs[3]:
         st.session_state.sim = {}
         st.session_state.pop("sim-editor", None)
         st.rerun()
+    st.caption("The Excel export (sidebar) includes this simulation.")
 
 # ---------------------------------------------------------------- prices
 with tabs[4]:
@@ -401,3 +385,11 @@ with tabs[5]:
         st.dataframe(pd.DataFrame([dict(file=s.source, start=s.period_start, end=s.period_end, positions=len(s.positions),
                                         dividends=s.nav.get("Dividends"), ending_value=s.nav.get("Ending Value")) for s in statements]),
                      hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------- export (sidebar, after everything is computed)
+with st.sidebar:
+    st.subheader("Export")
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim), file_name=default_name(rep),
+                       mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
+                       help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
+                            "and how everything is calculated.")

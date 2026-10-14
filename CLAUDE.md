@@ -13,7 +13,7 @@ pip install -e ".[app,dev]"          # editable install with web app and tests
 pytest                               # unit tests (synthetic data only)
 python scripts/regression.py         # compare against the baseline from the real exports in private/
 meerwaarde app                       # web app on http://localhost:8501 (data in ~/.local/share/meerwaarde)
-meerwaarde report private/exports/*.pdf --offline --prices private/prices.csv --today 2026-10-14 -v
+meerwaarde report private/exports/*.pdf --offline --prices private/prices.csv --today 2026-10-14 -v --xlsx
 ```
 
 Run `pytest` and `python scripts/regression.py` before every commit. If the regression changes on purpose,
@@ -28,7 +28,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/portfolio.py` | FIFO lots per (broker, asset); own-wallet transfers; ISIN conversions; bond redemption at par; foreign cash from LYNX statements |
 | `src/meerwaarde/engine/tax.py` | TaxRules, unit_acquisition, gain_for, max_without_tax, TaxCalculator |
 | `src/meerwaarde/prices/` | PriceBook (override > statement > online) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
-| `src/meerwaarde/report.py` | pandas tables for CLI and app; `build_report()` |
+| `src/meerwaarde/report.py` | pandas tables for CLI and app; `Report.simulate()`; `RULES_TEXT`; `build_report()` |
+| `src/meerwaarde/export.py` | Excel workbook (`to_xlsx`): engine results as values, totals as formulas (D12) |
 | `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Prices, Data) |
 | `src/meerwaarde/cli.py` | `meerwaarde report` and `meerwaarde app` |
 | `tests/` | pytest, synthetic data only |
@@ -72,7 +73,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 - User-facing text in plain English, with Dutch legal terms where the law uses them (meerwaardebelasting,
   andere financiële activa, beurstaks / stock exchange tax). Euro amounts formatted `€1,234`.
 - Commit messages: imperative, explain the why; mention regression changes.
-- Streamlit ≥ 1.50: use `width="stretch"`, not `use_container_width`.
+- Streamlit ≥ 1.65: use `width="stretch"`, not `use_container_width`.
+- A new table or figure in the app also goes into the Excel export (`export.py`) and its test.
 
 ## Working style
 

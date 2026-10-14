@@ -20,6 +20,9 @@ def _eur(v):
 def cmd_report(a):
     from .report import build_report
     files = [Path(f) for f in a.files]
+    if a.xlsx and not a.xlsx.lower().endswith(".xlsx"):
+        sys.exit(f"--xlsx takes the workbook's file name (ending in .xlsx), got {a.xlsx!r}. "
+                 "Put --xlsx after the PDF files, or give it a name: --xlsx results.xlsx")
     missing = [str(f) for f in files if not f.exists()]
     if missing:
         sys.exit(f"File not found: {', '.join(missing)}")
@@ -69,6 +72,11 @@ def cmd_report(a):
         s.to_csv(out / "summary.csv", index=False)
         print(f"\nCSV files written to {out}")
 
+    if a.xlsx is not None:
+        from .export import default_name, to_xlsx
+        path = Path(a.xlsx) if a.xlsx else Path(a.out or ".") / default_name(rep)
+        print(f"Excel workbook written to {to_xlsx(rep, path)}")
+
 
 def cmd_app(a):
     try:
@@ -90,9 +98,11 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="meerwaarde", description="Profit/loss and Belgian meerwaardebelasting from Bitvavo, DEGIRO and LYNX exports.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    r = sub.add_parser("report", help="Read exports and print profit and tax; optionally write CSV files")
+    r = sub.add_parser("report", help="Read exports and print profit and tax; optionally write CSV files or an Excel workbook")
     r.add_argument("files", nargs="+", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
     r.add_argument("--out", help="folder for CSV files")
+    r.add_argument("--xlsx", nargs="?", const="", metavar="FILE",
+                   help="write an Excel workbook (default name meerwaarde-<date>.xlsx, in --out when given)")
     r.add_argument("--prices", help="CSV with your own prices: asset,price_now,price_31dec (EUR)")
     r.add_argument("--offline", action="store_true", help="don't look up prices online")
     r.add_argument("--year", type=int, default=2026, help="tax year (default 2026)")
