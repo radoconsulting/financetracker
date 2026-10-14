@@ -7,3 +7,7 @@ dist/
 *.pdf
 prices.csv
 results/
+# personal: real exports, prices, notes, local Claude settings
+private/
+CLAUDE.local.md
+.claude/settings.local.json

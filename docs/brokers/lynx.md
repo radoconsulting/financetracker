@@ -1,0 +1,53 @@
+# LYNX (Interactive Brokers Ireland)
+
+## Export
+
+"Activity Statement" PDF per period (Lynx b.v. as introducing broker, IBIE as executing broker), one per
+calendar year plus year-to-date. Base currency EUR. All statements are needed: the FIFO lots come from the
+trades of every year. When the trades don't add up to the newest statement's positions, a warning says so.
+
+## Reading the PDF (`parsers/lynx.py`)
+
+- `statement_lines()` builds text lines from words with `pdfplumber.extract_words(extra_attrs=["size"])`.
+  Section titles are 10 pt (body text 7 pt, page title 14 pt): lines whose words are all 9.5–12 pt get a
+  `## ` prefix.
+- **Side-by-side sections** (e.g. *Dividends* next to *Deposits & Withdrawals*, or *Interest Accruals* and
+  *Dividends* on the right): when a 10 pt title starts right of 45% of the page width, the page is split from
+  that title's height down into a left and a right column, each read separately.
+- A section title repeated on the next page is a **continuation**: category (Stocks/Forex) and currency are kept.
+  (Bug found on the 2024 statement: resetting them made USD trades after a page break count as EUR.)
+- `parse_lines()` is the testable entry point.
+
+## Sections used
+
+| Section | Used for |
+|---|---|
+| Account Information | base currency |
+| Net Asset Value / Change in NAV | totals per period (dividends, fees, deposits) for checks |
+| Mark-to-Market Performance Summary | prior and current prices and quantities per symbol and currency. In the statement that starts on 1 January 2026, *prior* = 31-12-2025 → reference prices and EUR/USD (0.85135) |
+| Realized & Unrealized Performance Summary | Forex realized total → `fx_result` (currency result on USD cash); stock realized totals kept for checks |
+| Open Positions | quantity, close price, value; `Total in EUR` for foreign currency |
+| Forex Balances | foreign cash (USD) with IBKR's EUR cost basis |
+| Trades | per trade: date line above the row, qty, trade price, proceeds, comm/fee (includes Belgian TOB), basis. Forex rows (`EUR.USD`): only the commission is kept (`fee`) |
+| Dividends | description line `SYM(ISIN) Cash Dividend USD x per Share`, then `date amount`; reversals are negative rows |
+| Withholding Tax, Interest, Deposits & Withdrawals | dated rows |
+| Financial Instrument Information | symbol → ISIN, description, type |
+
+## Currency conversion
+
+Trades and dividends in USD are converted with the statement's own `Total in EUR` line for that block
+(section + category + currency): scale = EUR total / local total. This reproduces IBKR's EUR figures without
+needing exchange rates. Dividends get the same pro-rata treatment.
+
+## Foreign cash as a position
+
+USD cash comes from the newest statement's *Forex Balances*: two lots, the quantity held at the start of the
+period (prior quantity from Mark-to-Market) dated 31-12-2025, and the rest dated at the period start. P&L cost
+uses IBKR's cost basis; for the tax the first lot uses the 31-12-2025 rate and the rest the EUR/USD rate of the
+2026 dividends that created it.
+
+## Known differences with IBKR's own figures
+
+- CSPX unrealized: IBKR converts the USD cost basis at today's rate; the app uses the EUR paid at the time
+  (rate of each trade block). The app's number is the real EUR result; IBKR's differs by the currency move.
+- Total profit matches *ending NAV − deposits* within about €3.

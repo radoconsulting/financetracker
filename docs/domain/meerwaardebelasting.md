@@ -1,0 +1,58 @@
+# Meerwaardebelasting (Belgian capital gains tax on financial assets)
+
+Status as researched on 14 October 2026. Re-check sources before relying on a detail that matters.
+
+## Law
+
+- Approved by the Chamber on 3 April 2026, published in the Belgisch Staatsblad on 21 April 2026,
+  applies to gains realized from **1 January 2026**. Administrative circular 2026/C/74 clarifies details.
+- Three regimes:
+  1. Internal capital gains (shares sold to a company you control): 33%. **Not implemented.**
+  2. Substantial interest (≥ 20% of a company): €1,000,000 exemption per 5 years, then 1.25–10%. **Not implemented.**
+  3. **Other financial assets** (andere financiële activa): **10%**, this is what the app implements.
+
+## Rules implemented (regime 3)
+
+| Topic | Rule | Where in code |
+|---|---|---|
+| Rate | 10% of the net gain of the tax year above the exemption | `TaxRules.rate`, `TaxCalculator.summarize` |
+| Exemption | €10,000 per person per year (2026), indexed. Unused exemption carries forward €1,000/year for 5 years, to at most €15,000 (first possible in 2027). Partners each have their own. Must be claimed in the tax return. | `TaxRules.exemption` (carry-forward and partner split are backlog item 4) |
+| Asset types | Financial instruments (shares, bonds, funds, ETFs, derivatives), insurance contracts (tak 21/23/26), crypto-assets, currency, investment gold. All in regime 3. | `models.law_type`, `LAW_TYPES` |
+| Loss offset | Losses offset gains **within the same regime and year**, so across all asset types above. No carry-over to later years. Losses before 2026 don't count. | `summarize` nets all lines |
+| Reference value | Assets held before 1 January 2026: purchase value = value on **31-12-2025** (closing price; for crypto the price at 23:59 on 31 December). | `TaxRules.reference_date`, `PriceBook.reference` |
+| Higher original price | If the provable original purchase price is higher than the 31-12-2025 value, it can be used instead **for sales until 31-12-2030**, but only to reduce a gain (gain floored at 0). A loss is always measured from the 31-12-2025 value. | `unit_acquisition` |
+| After 2030 | Only the 31-12-2025 value. | `TaxRules.original_price_until` |
+| Bought from 2026 | Real purchase price. | `unit_acquisition` |
+| Matching | FIFO (first in, first out). | lot order in `Portfolio` |
+| Costs | Commissions, stock exchange tax and other costs are **not** part of purchase or sale value. | `Lot.gross_eur_unit`, `RealizedRow.gross_proceeds_eur` |
+| Foreign currency | Purchase and sale converted to EUR at the rate of each transaction date; for the reference value the institution's 31-12-2025 closing rate may be used. | LYNX statement rates, ECB fallback |
+| Transfers between own wallets | Not a realization. | `own_wallet_withdrawals` |
+| Proof missing | If the original purchase value can't be proven it is deemed zero (circular calls this a last resort, mainly for assets bought after 2025). For pre-2026 assets the 31-12-2025 value can always be used. | unknown 2026 lots → `zero_cost_when_unknown` |
+| Speculative crypto | Ordinary investors stay at 10%; 33% only with a combination of factors (share of crypto in wealth, borrowing, trading bots). | not modelled |
+| Withholding | Belgian banks withhold (opt-out); foreign brokers don't, so gains are declared in the tax return (income year 2026 = aanslagjaar 2027). | n/a |
+
+## Open questions and choices made
+
+- **FIFO vs average for the historical price.** The published-law summaries (LWB) say FIFO. Some earlier
+  draft-era sources (BNP Paribas Fortis, DVD Tax Law) mention the *average* purchase price of pre-2026 units for
+  the historical-price option. The app applies the max(31-12-2025, original) rule **per FIFO lot**. The effect is
+  usually small (only lots bought above the 31-12 price differ). Revisit if the circular says otherwise.
+- **Staking rewards received from 2026**: taxed as movable income (30%) when received (per cryptotax.be); their
+  later purchase value for the meerwaardebelasting is probably the value at receipt, but not confirmed. The app
+  counts them at zero cost (conservative, small amounts).
+- **Currency**: gains on foreign cash (LYNX USD) are in scope as "currency". Included as a position.
+- **Bond funds**: Reynders tax (30% on the bond part, TIS) applies on top; the 10% applies to the rest of the
+  gain. Not implemented (backlog item 9).
+
+## Sources
+
+- LWB, law published in the Staatsblad: https://www.lwb-info.be/nieuws/meerwaardebelasting-is-definitief-wet-verschenen-in-belgisch-staatsblad-377/
+- KPMG, approved by parliament (regimes, categories, 3 April 2026): https://kpmg.com/be/nl/insights/my-tax-compass-de-trends-die-op-uw-fiscale-radar-moeten-staan/people-services-updates/meerwaardebelasting-goedgekeurd-door-het-parlement.html
+- Vandelanotte, circular 2026/C/74: https://www.vandelanotte.be/nl/nieuws/meerwaardebelasting-dit-verduidelijkt-de-nieuwe-circulaire
+- Argenta summary (exemption, 31-12-2025 snapshot, covered assets): https://www.argenta.be/nl/argenta-informeert/meerwaardebelasting.html
+- DVD Tax Law, crypto (wallet transfers, 23:59 price, loss offset across types): https://www.dvdtaxlaw.be/meerwaardebelasting-crypto-2026/
+- Puilaetco, asset list and regimes (draft-era): https://www.puilaetco.be/nl-be/blog/meerwaardebelasting-op-financiele-activa
+- BNP Paribas Fortis, ten questions (draft-era): https://myexperts.bnpparibasfortis.be/nl/vermogen/tien-vragen-over-de-meerwaardebelasting-beantwoord
+- Delen, Reynders + 10% on bond funds: https://www.delen.bank/nl-be/blog/de-meerwaardebelasting-wat-u-moet-weten
+- Calculation rules of an independent calculator (FIFO, costs excluded): https://www.meerwaardebelastingberekenen.be/calculation-rules
+- Staking: https://cryptotax.be/kennis/staking-belasting-belgie
