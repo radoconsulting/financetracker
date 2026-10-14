@@ -55,3 +55,27 @@ the rate in Excel stays consistent. Inputs are blue on yellow. `fullCalcOnLoad` 
 Checked once with LibreOffice on the real exports: 332 formulas, no errors, totals equal the regression baseline.
 The simulator logic moved from the app to `Report.simulate()` so the app and the export share it. The app's
 download button builds the file only when clicked (callable `data`), which needs Streamlit ≥ 1.65.
+
+### D13 · Stock exchange tax rows are information only (2026-10-14)
+LYNX's per-trade TOB is already part of the trade commission. Counting it again would double the cost, so the parser
+emits `TOB` transactions that the portfolio stores in `Portfolio.tob` and nothing else uses for P&L or the tax.
+Regression: new row kind `LYNX|tob`, no other figure changed.
+
+### D14 · Exemption carry-forward: unused part, max €1,000, carried amounts first (2026-10-14)
+Default rule `partial` (Belfius' wording); `none_used` as a setting because other sources read "if you don't use
+it" more strictly. Carried amounts are used before the year's own amount, oldest first, and expire after 5 years.
+The own amount for years after 2026 is entered by the user once published.
+
+### D15 · Partners: ownership shares per broker, exceptions per position, everything per person (2026-10-14)
+A profile (`profile.json`) holds the people and shares. Every tax line, income row and other sale is split by share;
+each person gets their own exemption, carry-forward and dividend exemption. One person = exactly the old figures.
+
+### D16 · Dividend tax on the net amount, exemption for shares only, classification by asset class (2026-10-14)
+30% on dividends and interest after foreign withholding; the exemption (€833 for 2024–2026, overridable per year)
+only for assets of class `Stock`. DEGIRO's dividends aren't in its Transacties export: until backlog item 1 they're
+entered as other income in the profile.
+
+### D17 · Yearly tax report as one object, rendered to Excel and PDF (2026-10-14)
+`taxreport.tax_year_report()` collects everything for one income year; `export.tax_report_xlsx` (formulas for the
+arithmetic, rates and exemptions as inputs) and `pdf_report.tax_report_pdf` (reportlab, no system dependencies)
+render it. No tax-return codes are printed for the meerwaardebelasting: they're published with the 2027 return.

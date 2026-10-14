@@ -1,7 +1,7 @@
 # Other Belgian taxes around investing
 
-Researched 14 October 2026. Needed for backlog items 2 (dividend tax), 5 (yearly report), 7 (switch planner),
-9 (Reynders).
+Researched 14 October 2026. Used by the dividend tax (item 2) and the yearly report (item 5); needed later for
+items 7 (switch planner) and 9 (Reynders).
 
 ## Stock exchange tax (TOB / beurstaks)
 
@@ -20,13 +20,32 @@ DEGIRO withholds it for Belgian clients.
 Examples (October 2026): IWDA, SSAC/ISAC, SPYY, IMIE, SWRD, CSPX: 0.12%. VWCE and VGLA: 1.32% (registered).
 Source: https://curvo.eu/article/tob, https://curvo.eu/article/best-world-etf-belgium
 
-## Dividends and interest
+## Dividends and interest (implemented, backlog item 2: `engine/income_tax.py`)
 
 - Belgian withholding (roerende voorheffing) is 30%. Foreign brokers (DEGIRO, LYNX/IBKR) don't withhold it, so
-  dividends and interest are declared in the tax return.
-- Dividend exemption: dividends up to €833 per person per year (income 2025; same basis for 2026) are exempt,
-  max €249.90 tax. It covers dividends of **shares only**: distributions of investment funds, including ETFs
-  (trackers), are excluded. Source: Belfius
+  dividends and interest are declared in the tax return (box VII, income received without Belgian withholding).
+- The 30% applies to the amount received **after foreign withholding tax**; the foreign tax isn't credited
+  (France has a special regime, not modelled). LYNX withholds 20% Irish tax on credit interest.
+- Dividend exemption per person, dividends of **shares only** (not funds, bevaks, ETFs/trackers):
+
+  | Income year | Exempt dividends | Max tax saved |
+  |---|---|---|
+  | 2023 | €800 | €240 |
+  | 2024 | €833 | €249.90 |
+  | 2025 | €833 | €249.90 (Triodos, KBC; Wolters Kluwer's own calculation said €859) |
+  | 2026 | €833 | €249.90 (Belfius) |
+
+  `DIVIDEND_EXEMPTION`; the profile can override a year. When Belgian withholding was applied (Belgian bank) the
+  exemption is reclaimed with code 1437/2437; for foreign income the dividends are declared and the exemption is
+  claimed in the same box. **Exact codes for the 2027 return aren't published yet: check Tax-on-web.**
+  Sources: Belfius (link below), KBC https://www.kbc.be/particulieren/nl/juridische-info/documentatie-beleggen/vrijstelling-roerende-voorheffing-dividenden-aandelen.html,
+  Triodos https://www.triodos.be/nl/meest-gestelde-vragen/wat-houdt-de-vrijstelling-van-belgische-roerende-voorheffing-voor-dividenden-van-aandelen-in?id=080d234b81ba,
+  Wikifin https://www.wikifin.be/nl/belasting-werk-en-inkomen/belastingaangifte/fiscale-voordelen-bij-beleggingen/terugvorderen-van,
+  Wolters Kluwer https://assets.contenthub.wolterskluwer.com/api/public/content/2572308-fiscale-grensbedragen-2026-946402cb1f
+- Interest on a broker's cash account: 30%, no exemption (the savings exemption is for regulated savings deposits).
+- The app classifies income by the paying asset's class: `Stock` → shares (exemption), anything else → funds.
+  LYNX dividends get their class from the statement's instrument type.
+- Earlier source: Belfius
   https://www.belfius.be/retail/nl/sleutelmomenten/belastingen/dagelijkse-fiscaliteit/fiscaliteit-beleggingen/informatie/dividend/index.aspx
   and Crelan https://www.crelan.be/nl/particulieren/sparen-en-beleggen/beleggen/artikel/belastingvrijstelling-dividenden-faq
 - Accumulating ETFs: no dividend tax (nothing is paid out); the reinvested income only meets the 10%
@@ -41,8 +60,20 @@ share) when units are sold. The 10% meerwaardebelasting applies to the rest of t
 the fund provider. Relevant positions today: iShares $ Corp Bond (IE0032895942), iShares EUR Covered Bond
 (IE00B3B8Q275).
 
+## Stock exchange tax in the yearly report (backlog item 5)
+
+- LYNX lists the tax per trade in the statement's *Transaction Fees* section ("BE Securities Transaction Tax"); it is
+  also inside the trade's commission, so the app keeps these rows as information only (`TOB` kind, `Portfolio.tob`).
+  Per-year totals match the statement's NAV line "Transaction Fees" to the cent.
+- DEGIRO's *Transacties* export doesn't show it separately: the report gives an **estimate** at 0.12% (funds, ETFs,
+  bonds; cap €1,300) and 0.35% (shares, turbos; cap €1,600). It can't see the 1.32% of Belgian-registered
+  accumulating funds. The account statement (backlog item 1) will replace the estimate.
+- If a foreign broker doesn't withhold it, the investor files the stock exchange tax return himself, by the last
+  working day of the second month after the trade.
+
 ## Foreign accounts
 
 Belgian residents must report accounts at foreign institutions (DEGIRO's Dutch branch, LYNX via Interactive
 Brokers Ireland, Bitvavo) to the National Bank's central contact point (CAP) and tick the foreign-account box in
-the tax return. Not computed by the app; part of backlog item 5 as a checklist.
+the tax return, with the countries. Whether a crypto platform account must be reported to the CAP isn't settled.
+The yearly report has this as a checklist item with the institutions and countries (`taxreport.ACCOUNTS`).

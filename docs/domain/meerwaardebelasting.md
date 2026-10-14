@@ -16,7 +16,7 @@ Status as researched on 14 October 2026. Re-check sources before relying on a de
 | Topic | Rule | Where in code |
 |---|---|---|
 | Rate | 10% of the net gain of the tax year above the exemption | `TaxRules.rate`, `TaxCalculator.summarize` |
-| Exemption | €10,000 per person per year (2026), indexed. Unused exemption carries forward €1,000/year for 5 years, to at most €15,000 (first possible in 2027). Partners each have their own. Must be claimed in the tax return. | `TaxRules.exemption` (carry-forward and partner split are backlog item 4) |
+| Exemption | €10,000 per person per year (2026), indexed. Unused exemption carries forward €1,000/year for 5 years, to at most €15,000 (first possible in 2027). Partners each have their own. Must be claimed in the tax return. | `TaxRules.exemption` (own amount of the tax year), `engine/household.py` (carry-forward, partner), see below |
 | Asset types | Financial instruments (shares, bonds, funds, ETFs, derivatives), insurance contracts (tak 21/23/26), crypto-assets, currency, investment gold. All in regime 3. | `models.law_type`, `LAW_TYPES` |
 | Loss offset | Losses offset gains **within the same regime and year**, so across all asset types above. No carry-over to later years. Losses before 2026 don't count. | `summarize` nets all lines |
 | Reference value | Assets held before 1 January 2026: purchase value = value on **31-12-2025** (closing price; for crypto the price at 23:59 on 31 December). | `TaxRules.reference_date`, `PriceBook.reference` |
@@ -30,6 +30,33 @@ Status as researched on 14 October 2026. Re-check sources before relying on a de
 | Proof missing | If the original purchase value can't be proven it is deemed zero (circular calls this a last resort, mainly for assets bought after 2025). For pre-2026 assets the 31-12-2025 value can always be used. | unknown 2026 lots → `zero_cost_when_unknown` |
 | Speculative crypto | Ordinary investors stay at 10%; 33% only with a combination of factors (share of crypto in wealth, borrowing, trading bots). | not modelled |
 | Withholding | Belgian banks withhold (opt-out); foreign brokers don't, so gains are declared in the tax return (income year 2026 = aanslagjaar 2027). | n/a |
+
+## Exemption over the years and partners (implemented, backlog item 4)
+
+- **Own amount per year**: €10,000 for 2026; indexed every year. Later amounts aren't published yet: the user enters
+  them (app: Tax years tab; CLI: profile `years.<y>.exemption_base` or `--exemption`). Until then the latest known
+  amount is used (`ExemptionRules.base_for`).
+- **Carry-forward**: if the exemption isn't (fully) used, the unused part, at most €1,000, is added to the following
+  year; each addition can be used for 5 years, so the exemption reaches at most €15,000 (10,000 + 5 × 1,000). Belfius
+  says the carried amount is used first the next year; the app uses carried amounts first, oldest first, so the own
+  amount is what carries forward again (`exemption_schedule`).
+- **Open point (setting `carry_rule`)**: Belfius describes the carry-forward as "the unused balance, max €1,000"
+  (`partial`, the default). Other sources (SBB, Kovag) say "if you don't use it, it grows by €1,000 a year", which
+  could mean only a year without any gain counts (`none_used`). Check against the circular / the 2027 tax return.
+- **Which net gain counts**: per person, the year's sales from the exports (their ownership share) plus other sales
+  entered in the profile; once a return is filed, the declared figure can be entered and replaces the calculated one.
+- **Partners**: each person has their own exemption. Married couples under the legal regime can each use theirs on
+  half of the common assets (Belfius, SBB, Bolero: €20,000 for a couple, up to €30,000 with carry-forward). The app
+  splits every line by ownership share (per broker, with exceptions per position) and computes gains, losses,
+  exemption and tax per person; one partner's losses don't offset the other's gains. The simulator's "max without
+  tax" respects every owner's room: for a share s, the position's room is min(room_p / s_p).
+
+Sources (consulted 14 October 2026): Belfius (https://www.belfius.be/retail/nl/producten/sparen-beleggen/info-publicaties/meerwaardebelasting/index.aspx),
+Bolero (https://www.bolero.be/nl/lp/meerwaardebelasting/vrijstelling-en-minderwaarde),
+SBB (https://www.sbb.be/nl/magazine/meerwaardebelasting-aandelen),
+Kovag (https://kovag.be/nieuws/de-meest-gestelde-vragen-over-de-meerwaardebelasting).
+The FOD Financiën page (https://fin.belgium.be/nl/particulieren/belastingaangifte/inkomsten/meerwaardebelasting)
+couldn't be read automatically; read it by hand.
 
 ## Open questions and choices made
 

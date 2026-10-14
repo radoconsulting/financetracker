@@ -29,8 +29,9 @@ trades of every year. When the trades don't add up to the newest statement's pos
 | Open Positions | quantity, close price, value; `Total in EUR` for foreign currency |
 | Forex Balances | foreign cash (USD) with IBKR's EUR cost basis |
 | Trades | per trade: date line above the row, qty, trade price, proceeds, comm/fee (includes Belgian TOB), basis. Forex rows (`EUR.USD`): only the commission is kept (`fee`) |
-| Dividends | description line `SYM(ISIN) Cash Dividend USD x per Share`, then `date amount`; reversals are negative rows |
-| Withholding Tax, Interest, Deposits & Withdrawals | dated rows |
+| Dividends | description line `SYM(ISIN) Cash Dividend USD x per Share`, then `date amount`; reversals are negative rows. Asset class from the instrument type (`COMMON` → Stock), which decides the dividend exemption |
+| Withholding Tax, Interest, Deposits & Withdrawals | dated rows. Withholding on a dividend is linked to the security when the description has `(ISIN)`; withholding on credit interest (20% Irish) stays on the currency |
+| Transaction Fees | `date, time SYM BE Securities Transaction Tax qty price amount` per trade, in currency blocks with `Total in EUR` → `TOB` rows (information only: the same amount is inside the trade's Comm/Fee) |
 | Financial Instrument Information | symbol → ISIN, description, type |
 
 ## Currency conversion

@@ -4,6 +4,10 @@ paths:
   - "src/meerwaarde/prices/**"
   - "tests/test_tax.py"
   - "tests/test_portfolio.py"
+  - "tests/test_household.py"
+  - "tests/test_income_tax.py"
+  - "src/meerwaarde/report.py"
+  - "src/meerwaarde/taxreport.py"
 ---
 
 # Tax, portfolio and price rules
@@ -26,4 +30,8 @@ paths:
   errors, return None and add to `PriceBook.errors`. Parse functions stay separate from the HTTP call so they
   can be tested offline with stored samples.
 - One price per ISIN across brokers (D8).
+- Per person: every tax line, income row and other sale is split by `Household.share()`; with one person the
+  results must equal the old single-person figures (the regression checks this). Exemption carry-forward lives only
+  in `exemption_schedule` (D14); dividend exemption amounts per year in `DIVIDEND_EXEMPTION` (D16).
+- `TOB` rows never enter P&L or the meerwaardebelasting (D13).
 - Uncertain rule? Say so, cite the source, make it a setting, add a `docs/decisions.md` entry.

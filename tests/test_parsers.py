@@ -85,6 +85,35 @@ def test_lynx_lines():
     assert info.forex["USD"]["qty"] == 120.0 and info.positions["ABCD"]["value_eur"] == pytest.approx(720 * 0.9)
 
 
+LYNX_EXTRA = """## Withholding Tax
+USD
+2026-03-31 ABCD(US0000000002) Cash Dividend USD 1.00 per Share - US Tax -1.50
+Total -1.50
+Total in EUR -1.32
+## Transaction Fees
+Date/Time Symbol Description Quantity Trade Price Amount Code
+Stocks
+USD
+2026-01-16, 04:50:43 ABCD BE Securities Transaction Tax 2 55.0000 -0.39
+Total -0.39
+Total in EUR -0.35
+"""
+
+
+def test_lynx_withholding_and_stock_exchange_tax():
+    lines = (["Activity Statement", "January 1, 2026 - October 13, 2026"] + LYNX_LINES.strip().split("\n")
+             + LYNX_EXTRA.strip().split("\n"))
+    txns, info, warns = lynx.parse_lines(lines, "s.pdf")
+    div = [t for t in txns if t.kind == "dividend"][0]
+    assert div.asset_class == "Stock"                       # the instrument type decides the dividend exemption
+    wht = [t for t in txns if t.kind == "withholding"][0]
+    assert wht.asset == "US0000000002" and wht.asset_class == "Stock" and wht.amount_eur == pytest.approx(-1.32)
+    (tob,) = [t for t in txns if t.kind == "tob"]
+    assert tob.asset == "US0000000002" and tob.amount_eur == pytest.approx(-0.35) and tob.qty == 2
+    buy = [t for t in txns if t.kind == "buy"][0]
+    assert buy.fees_eur == pytest.approx(0.9)              # the trade's own costs are unchanged (TOB is inside them)
+
+
 @pytest.mark.parametrize("name,cls", [
     ("ISHARES CORE S&P 500 UCITS ETF", "ETF"),
     ("ISHARES $ CORP BOND UCITS ETF", "Bond ETF"),

@@ -18,8 +18,15 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 - **Simulator**: enter quantities to sell (and, if you like, a different price) and see the taxable gain,
   the tax-free room left, and for every position the largest quantity you can still sell without tax.
 - **Excel export**: one workbook with a summary, open positions, sales, income, the meerwaardebelasting per
-  line, your current simulation, prices and a "How calculated" sheet. Totals are formulas, so changing the
-  exemption, the rate or a price in Excel updates them.
+  line, the exemption per year, the tax on dividends and interest, your current simulation, prices and a "How
+  calculated" sheet. Totals are formulas, so changing the exemption, the rate or a price in Excel updates them.
+- **Exemption over the years and a partner**: unused exemption carries forward (at most €1,000 a year, for 5 years,
+  up to €15,000). Add a partner and split each broker (or position) between you: each person gets their own
+  exemption and tax. Sales and income elsewhere, and the figures you declared, go on the **Tax years** tab.
+- **Dividends and interest**: per year, person and broker, with foreign tax, the dividend exemption (shares only)
+  and the 30% Belgian tax to declare, because foreign brokers don't withhold it.
+- **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
+  tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 
 ### Rules it applies
 
@@ -29,6 +36,8 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 | Held before 2026 | Purchase value = closing price of 31-12-2025. If you originally paid more, that price applies instead for sales until the end of 2030, but only to reduce a gain; a loss is measured from the 31-12-2025 price. |
 | Bought from 2026 | Purchase value = purchase price. First in, first out per broker. Commissions and stock exchange tax are left out. |
 | Asset types | Financial instruments, insurance contracts, crypto-assets, currency and investment gold form one regime: losses offset gains within the year, and don't carry over. |
+| Exemption over the years | Unused exemption adds at most €1,000 a year to the following years, each for 5 years (so at most €15,000); carried amounts are used first. Per person; partners split jointly owned assets. |
+| Dividends and interest | 30% on the amount after foreign tax; dividends from shares are exempt up to €833 per person (2024–2026); fund and ETF distributions and interest are not. |
 | Not included | The 33% regime for internal capital gains, holdings of 20% or more in a company, Reynders tax on bond funds, and income tax on staking rewards (units received in the tax year without a price count at zero cost). |
 
 ### How the exports are interpreted
@@ -76,6 +85,16 @@ meerwaarde report Volledige_geschiedenis.pdf Transactions.pdf LYNX_2023.pdf LYNX
 Options: `--xlsx [FILE]` for the Excel workbook (default `meerwaarde-<date>.xlsx`, in the `--out` folder when
 given), `--prices my_prices.csv`, `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
 `--withdrawals-are-sales`, `-v` for all notes.
+
+### Yearly tax report
+
+```bash
+meerwaarde tax-report *.pdf --year 2026 --profile profile.json     # prints it and writes tax-report-2026.xlsx and .pdf
+```
+
+`--xlsx [FILE]` or `--pdf [FILE]` writes only one of the two. In the app: the **Tax report** tab. The profile
+(partner, ownership, other sales and income, exemption amounts per year) is the app's `profile.json`; without it,
+everything belongs to one person.
 
 ### Excel workbook
 

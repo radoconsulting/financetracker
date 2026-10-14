@@ -11,7 +11,7 @@ from datetime import datetime, date, timedelta
 
 import pdfplumber
 
-from ..models import (Transaction, BUY, SELL, DIVIDEND, INTEREST, WITHHOLDING, CASH_IN, CASH_OUT, FX_RESULT, FEE)
+from ..models import (Transaction, BUY, SELL, DIVIDEND, INTEREST, WITHHOLDING, CASH_IN, CASH_OUT, FX_RESULT, FEE, TOB)
 from ..util import num_us
 from .classify import guess_class
 
@@ -96,6 +96,8 @@ _OPENPOS = re.compile(rf"^(?P<sym>[A-Z0-9][A-Z0-9.\-]*) (?P<qty>{NUM}) (?P<mult>
 _FOREX_BAL = re.compile(rf"^(?P<cur>[A-Z]{{3}}) (?P<qty>{DEC}) (?P<cp>{NUM}) (?P<cb>{DEC}) (?P<close>{NUM}) (?P<val>{DEC}) (?P<upl>{DEC})")
 _PERF = re.compile(rf"^(?P<sym>[A-Z0-9][A-Z0-9.\-]*) (?P<nums>(?:{DEC} ?){{12}})")
 _MTM = re.compile(rf"^(?P<sym>[A-Z0-9][A-Z0-9.\-]*) (?P<pq>{NUM}) (?P<cq>{NUM}) (?P<pp>{NUM}|--) (?P<cpx>{NUM}|--) ")
+_TOBROW = re.compile(rf"^(?P<date>\d{{4}}-\d{{2}}-\d{{2}}),? (?:\d{{2}}:\d{{2}}:\d{{2}} )?(?P<sym>[A-Z0-9][A-Z0-9.\-]*) (?P<desc>.*?Transaction Tax.*?) (?P<qty>{NUM}) (?P<price>{NUM}) (?P<amount>{DEC})(?: [A-Za-z;]+)?$")
+_ISIN_IN = re.compile(r"\((?P<isin>[A-Z]{2}[A-Z0-9]{9}\d)\)")
 _INSTR = re.compile(r"^(?P<sym>[A-Z0-9][A-Z0-9.\-]*) (?P<desc>.+?) (?P<conid>\d{4,}) (?P<isin>[A-Z]{2}[A-Z0-9]{9}\d) (?P<rest>.+)$")
 _NAV_ITEMS = ["Starting Value", "Mark-to-Market", "Deposits & Withdrawals", "Dividends", "Withholding Tax",
               "Change in Dividend Accruals", "Interest", "Change in Interest Accruals", "Commissions",
@@ -104,6 +106,14 @@ _NAV_ITEMS = ["Starting Value", "Mark-to-Market", "Deposits & Withdrawals", "Div
 
 def _d(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%d")
+
+
+def _asset_class(inst: dict, name: str) -> str:
+    """Asset class from the statement's instrument type (COMMON, ETF, ...), else guessed from the name."""
+    typ = inst.get("type", "").upper()
+    if typ in ("COMMON", "STK", "REIT", "ADR"):
+        return "Stock"
+    return guess_class(name + " ETF" if typ == "ETF" else name)
 
 
 def parse(source, filename: str = ""):
@@ -122,6 +132,7 @@ def parse_lines(lines: list[str], filename: str = ""):
     blocks_eur = {}        # (section, currency) -> list of 'Total in EUR' number lists
     blocks_local = {}      # (section, currency) -> list of 'Total' number lists
     dividends, cash_rows = [], []   # (date, sym, isin, cur, amount, desc), (section, date, desc, cur, amount)
+    tob_rows = []          # (date, sym, desc, qty, price, amount, currency, category)
     div_desc = None
 
     for raw in lines:
@@ -260,6 +271,13 @@ def parse_lines(lines: list[str], filename: str = ""):
                 cash_rows.append((section, mm.group("date"), mm.group("desc"), currency, num_us(mm.group("amount"))))
             continue
 
+        if section == "Transaction Fees":
+            mm = _TOBROW.match(line)
+            if mm:
+                tob_rows.append((mm.group("date"), mm.group("sym"), mm.group("desc"), num_us(mm.group("qty")),
+                                 num_us(mm.group("price")), num_us(mm.group("amount")), currency, category))
+            continue
+
         if section == "Financial Instrument Information":
             mm = _INSTR.match(line)
             if mm:
@@ -289,7 +307,7 @@ def parse_lines(lines: list[str], filename: str = ""):
             warnings.append(f"LYNX: no EUR rate for {cur} trades in {filename}; {sym} trade skipped")
             continue
         name = inst.get("name") or sym
-        acls = "Stock" if inst.get("type", "").upper() in ("COMMON", "STK", "REIT", "ADR") else guess_class(name + " ETF" if inst.get("type") == "ETF" else name)
+        acls = _asset_class(inst, name)
         txns.append(Transaction(broker=BROKER, ts=_d(d["date"]) if d["date"] else datetime.combine(info.period_end, datetime.min.time()),
                                 kind=BUY if qty > 0 else SELL, asset=inst.get("isin", sym), name=name, asset_class=acls,
                                 qty=qty, price=num_us(d["tp"]), price_cur=cur, gross_eur=abs(proc) * k, fees_eur=-comm * k,
@@ -299,16 +317,32 @@ def parse_lines(lines: list[str], filename: str = ""):
     for (dt, sym, isin, cur, amount) in dividends:
         k = scale("Dividends", cur, 0) or 1.0
         inst = info.instruments.get(sym, {})
-        txns.append(Transaction(broker=BROKER, ts=_d(dt), kind=DIVIDEND, asset=isin, name=inst.get("name") or sym,
-                                asset_class="ETF", qty=0, currency=cur, amount_eur=round(amount * k, 2), price=amount,
-                                source=filename, note=f"{amount:.2f} {cur}"))
+        name = inst.get("name") or sym
+        txns.append(Transaction(broker=BROKER, ts=_d(dt), kind=DIVIDEND, asset=isin, name=name,
+                                asset_class=_asset_class(inst, name), qty=0, currency=cur, amount_eur=round(amount * k, 2),
+                                price=amount, source=filename, note=f"{amount:.2f} {cur}"))
+    by_isin = {v["isin"]: v for v in info.instruments.values() if v.get("isin")}
     for (sec, dt, desc, cur, amount) in cash_rows:
         k = scale(sec, cur, 0) or 1.0
         kind = {"Withholding Tax": WITHHOLDING, "Interest": INTEREST}.get(sec)
         if sec == "Deposits & Withdrawals":
             kind = CASH_IN if amount > 0 else CASH_OUT
-        txns.append(Transaction(broker=BROKER, ts=_d(dt), kind=kind, asset=cur, name=desc, asset_class="Cash/FX",
+        asset, acls = cur, "Cash/FX"
+        im = _ISIN_IN.search(desc)
+        if kind == WITHHOLDING and im:            # tax withheld on a dividend: link it to the paying security
+            asset = im.group("isin")
+            inst = by_isin.get(asset, {})
+            acls = _asset_class(inst, inst.get("name") or desc)
+        txns.append(Transaction(broker=BROKER, ts=_d(dt), kind=kind, asset=asset, name=desc, asset_class=acls,
                                 qty=amount, currency=cur, amount_eur=round(amount * k, 2), source=filename))
+
+    # ---- stock exchange tax per trade (information: it is already part of the trade's commission) ----
+    for (dt, sym, desc, qty, price, amount, cur, cat) in tob_rows:
+        k = scale("Transaction Fees", cur, 0, cat) or 1.0
+        inst = info.instruments.get(sym, {})
+        txns.append(Transaction(broker=BROKER, ts=_d(dt), kind=TOB, asset=inst.get("isin", sym), name=inst.get("name") or sym,
+                                asset_class=_asset_class(inst, inst.get("name") or sym), qty=qty, price=price, price_cur=cur,
+                                currency=cur, amount_eur=round(amount * k, 2), source=filename, note=desc))
 
     # ---- open positions in EUR ----
     for sym, p in info.positions.items():

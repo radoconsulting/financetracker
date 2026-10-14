@@ -48,7 +48,8 @@ TOTAL_BORDER = Border(top=Side(style="thin", color="1F3A5F"))
 WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
-SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Simulator", "Prices", "How calculated")
+SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
+          "Prices", "How calculated")
 
 
 @dataclass
@@ -108,7 +109,7 @@ def _header(ws, row, headers, start_col=1):
     ws.row_dimensions[row].height = 28
 
 
-def _table(ws, cols: list[Col], rows: list[dict], top: int = 1, freeze: bool = True):
+def _table(ws, cols: list[Col], rows: list[dict], top: int = 1, freeze: bool = True, filters: bool = True):
     """Header at `top`, one row per record. Returns (first data row, last data row, column letters by key)."""
     letters = {c.key: get_column_letter(i) for i, c in enumerate(cols, 1)}
     _header(ws, top, [c.header for c in cols])
@@ -120,7 +121,8 @@ def _table(ws, cols: list[Col], rows: list[dict], top: int = 1, freeze: bool = T
             v = c.formula.format(r=r, **letters) if c.formula else rec.get(c.key)
             _write(ws, r, i, v, fmt=c.fmt)
     first, last = top + 1, top + len(rows)
-    ws.auto_filter.ref = f"A{top}:{get_column_letter(len(cols))}{max(top, last)}"
+    if filters:
+        ws.auto_filter.ref = f"A{top}:{get_column_letter(len(cols))}{max(top, last)}"
     if freeze:
         ws.freeze_panes = f"A{top + 1}"
     return first, last, letters
@@ -261,39 +263,120 @@ def _summary(ws, rep: Report, R: dict) -> dict:
     # meerwaardebelasting
     row += 1
     t = R["Meerwaardebelasting"]
+    hh = rep.household
+    other = rep.other_gains()
+    avail = rep.exemptions()
     _write(ws, row, 1, f"Meerwaardebelasting {rules.year} if you sold everything on {rep.tax.today:%d-%m-%Y}", SECTION)
-    _header(ws, row + 1, ["Type (as the law defines it)", "Sold this year", "If you sold the rest", "Net"])
+    _header(ws, row + 1, ["Type (as the law defines it)", "Sold this year", "Other sales (not in the exports)",
+                          "If you sold the rest", "Net"])
     first = row + 2
     for n, (k, (name, _nl)) in enumerate(LAW_TYPES.items()):
         r = first + n
         _write(ws, r, 1, name)
         _write(ws, r, 2, f'=SUMIFS({t["taxable_gain_eur"]},{t["type"]},$A{r},{t["status"]},"Sold")', fmt=EUR)
-        _write(ws, r, 3, f'=SUMIFS({t["taxable_gain_eur"]},{t["type"]},$A{r},{t["status"]},"Open")', fmt=EUR)
-        _write(ws, r, 4, f"=B{r}+C{r}", fmt=EUR)
+        _write(ws, r, 3, sum(other[p].get(k, 0.0) for p in hh.ids), INPUT if hh.single else BODY, EUR,
+               INPUT_FILL if hh.single else None)
+        _write(ws, r, 4, f'=SUMIFS({t["taxable_gain_eur"]},{t["type"]},$A{r},{t["status"]},"Open")', fmt=EUR)
+        _write(ws, r, 5, f"=B{r}+C{r}+D{r}", fmt=EUR)
     last = first + len(LAW_TYPES) - 1
     tot = last + 1
     _write(ws, tot, 1, "All types", BOLD, border=TOTAL_BORDER)
-    for c in (2, 3, 4):
+    for c in (2, 3, 4, 5):
         L = get_column_letter(c)
         _write(ws, tot, c, f"=SUM({L}{first}:{L}{last})", BOLD, EUR, border=TOTAL_BORDER)
 
     r = tot + 2
-    _write(ws, r, 1, "Net taxable gain")
-    _write(ws, r, 2, f"=D{tot}", fmt=EUR)
-    _write(ws, r + 1, 1, "Exemption (change it here)")
-    _write(ws, r + 1, 2, rules.exemption, INPUT, EUR, INPUT_FILL)
-    _write(ws, r + 2, 1, "Taxable above the exemption")
-    _write(ws, r + 2, 2, f"=MAX(0,B{r}-B{r + 1})", fmt=EUR)
-    _write(ws, r + 3, 1, "Rate (change it here)")
-    _write(ws, r + 3, 2, rules.rate, INPUT, PCT, INPUT_FILL)
-    _write(ws, r + 4, 1, "Meerwaardebelasting", BOLD, border=TOTAL_BORDER)
-    _write(ws, r + 4, 2, f"=B{r + 2}*B{r + 3}", BOLD, EUR, border=TOTAL_BORDER)
-    _write(ws, r + 5, 1, "Tax-free room left after this year's sales")
-    _write(ws, r + 5, 2, f"=MAX(0,B{r + 1}-B{tot})", fmt=EUR)
-    _write(ws, r + 7, 1, "All types fall under 'andere financiële activa': one rate and one exemption, and losses "
-                         "offset gains across types within the year. Blue figures on yellow can be changed.", NOTE)
-    _write(ws, r + 8, 1, "This is a calculation from your exports, not tax advice. See 'How calculated'.", NOTE)
-    return {"exemption": f"'Summary'!$B${r + 1}", "rate": f"'Summary'!$B${r + 3}"}
+    if hh.single:
+        pid = hh.ids[0]
+        hist = rep.exemption_history(pid) if rules.year >= rep.exemption_rules().first_year else []
+        carried = hist[-1].carried if hist else 0.0
+        _write(ws, r, 1, "Net taxable gain")
+        _write(ws, r, 2, f"=E{tot}", fmt=EUR)
+        label = f"Exemption {rules.year} (change it here)"
+        if carried:
+            label = f"Exemption {rules.year}: own €{avail[pid] - carried:,.0f} + carried €{carried:,.0f} (change it here)"
+        _write(ws, r + 1, 1, label)
+        _write(ws, r + 1, 2, avail[pid], INPUT, EUR, INPUT_FILL)
+        _write(ws, r + 2, 1, "Taxable above the exemption")
+        _write(ws, r + 2, 2, f"=MAX(0,B{r}-B{r + 1})", fmt=EUR)
+        _write(ws, r + 3, 1, "Rate (change it here)")
+        _write(ws, r + 3, 2, rules.rate, INPUT, PCT, INPUT_FILL)
+        _write(ws, r + 4, 1, "Meerwaardebelasting", BOLD, border=TOTAL_BORDER)
+        _write(ws, r + 4, 2, f"=B{r + 2}*B{r + 3}", BOLD, EUR, border=TOTAL_BORDER)
+        _write(ws, r + 5, 1, "Tax-free room left after this year's sales")
+        _write(ws, r + 5, 2, f"=MAX(0,B{r + 1}-B{tot}-C{tot})", fmt=EUR)
+        end = r + 7
+        refs = {"exemption": f"'Summary'!$B${r + 1}", "rate": f"'Summary'!$B${r + 3}"}
+    else:
+        summ = rep.tax_summary(rep.sold_lines() + rep.tax.open_lines())
+        _header(ws, r, ["Person", "Net taxable gain", "Exemption available", "Taxable above the exemption",
+                        "Meerwaardebelasting"])
+        for n, pid in enumerate(hh.ids):
+            pp = summ["people"][pid]
+            rr = r + 1 + n
+            _write(ws, rr, 1, hh.name(pid))
+            _write(ws, rr, 2, round(pp["net"], 2), fmt=EUR)
+            _write(ws, rr, 3, pp["exemption"], fmt=EUR)
+            _write(ws, rr, 4, f"=MAX(0,B{rr}-C{rr})", fmt=EUR)
+            _write(ws, rr, 5, f"=D{rr}*{rules.rate}", fmt=EUR)
+        tr = r + 1 + len(hh.ids)
+        _write(ws, tr, 1, "Together", BOLD, border=TOTAL_BORDER)
+        for c in (2, 3, 4, 5):
+            L = get_column_letter(c)
+            _write(ws, tr, c, f"=SUM({L}{r + 1}:{L}{tr - 1})", BOLD, EUR, border=TOTAL_BORDER)
+        _write(ws, tr + 1, 1, "Each person is taxed on their share of every position (see How calculated), with their "
+                              "own exemption; losses of one partner don't offset gains of the other.", NOTE)
+        end = tr + 3
+        refs = {}
+    _write(ws, end, 1, "All types fall under 'andere financiële activa': one rate and one exemption, and losses "
+                       "offset gains across types within the year. Blue figures on yellow can be changed.", NOTE)
+    _write(ws, end + 1, 1, "This is a calculation from your exports, not tax advice. See 'How calculated'.", NOTE)
+    return refs
+
+
+# ---------------------------------------------------------------- exemption and income tax
+EXEMPTION = [
+    Col("person", "Person", width=14), Col("year", "Year", YEAR, 8), Col("base", "Own exemption (€)", EUR, 16),
+    Col("carried_in", "Carried in (€)", EUR, 14), Col("available", "Available (€)", EUR, 15),
+    Col("net_gain", "Net taxable gain (€)", EUR, 17), Col("used", "Used (€)", EUR, 15),
+    Col("carry_out", "Carried forward (€)", EUR, 16), Col("expired", "Expired (€)", EUR, 12),
+    Col("carried_from", "Carried in from", width=30),
+]
+INCOME_SUMMARY = [
+    Col("year", "Year", YEAR, 8), Col("person", "Person", width=14),
+    Col("shares_net", "Dividends from shares, net (€)", EUR, 17),
+    Col("funds_net", "Distributions of funds and ETFs, net (€)", EUR, 19), Col("interest_net", "Interest, net (€)", EUR, 15),
+    Col("foreign_tax", "Foreign tax withheld (€)", EUR, 16), Col("exemption_used", "Dividend exemption used (€)", EUR, 17),
+    Col("taxable", "Taxable at 30% (€)", EUR, 16,
+        "=MAX(0,{shares_net}{r})-{exemption_used}{r}+MAX(0,{funds_net}{r})+MAX(0,{interest_net}{r})"),
+    Col("tax", "Tax (€)", EUR, 14, "={taxable}{r}*$B$2"),
+]
+INCOME_DETAIL = [
+    Col("year", "Year", YEAR, 8), Col("person", "Person", width=14), Col("broker", "Broker", width=10),
+    Col("category", "Income", width=34), Col("received", "Payments", COUNT, 10), Col("gross_eur", "Gross (€)", EUR, 15),
+    Col("foreign_tax_eur", "Foreign tax (€)", EUR, 15), Col("net_eur", "Net (€)", EUR, 15, "={gross_eur}{r}+{foreign_tax_eur}{r}"),
+]
+
+
+def _exemption_sheet(ws, rep: Report):
+    rule = rep.exemption_rules()
+    _table(ws, EXEMPTION, _records(rep.exemption_table()))
+    n = ws.max_row + 2
+    _write(ws, n, 1, f"Unused exemption carries forward: at most €{rule.carry_per_year:,.0f} a year, usable for "
+                     f"{rule.carry_years} years, carried amounts used first (rule: {rule.carry_rule}). Years before "
+                     f"{rule.first_year} don't count. The current year is up to the value date.", NOTE)
+
+
+def _income_tax_sheet(ws, rep: Report):
+    _write(ws, 1, 1, "Tax on dividends and interest", TITLE)
+    _write(ws, 2, 1, "Rate", BOLD)
+    _write(ws, 2, 2, 0.30, INPUT, PCT, INPUT_FILL)
+    _write(ws, 2, 3, "Foreign brokers don't withhold Belgian tax: declare these amounts. The 30% applies to the amount "
+                     "after foreign tax; only dividends from shares get the exemption.", NOTE)
+    _table(ws, INCOME_SUMMARY, _records(rep.income_tax_summary()), top=4)
+    top = ws.max_row + 3
+    _write(ws, top - 1, 1, "Per broker", SECTION)
+    _table(ws, INCOME_DETAIL, _records(rep.income_tax_table()), top=top, freeze=False, filters=False)
 
 
 # ---------------------------------------------------------------- simulator
@@ -307,9 +390,12 @@ def _simulator(ws, rep: Report, sim: Simulation, R: dict, refs: dict):
     _write(ws, 4, 1, "Other sales this year that aren't in your exports (taxable gain; negative for a loss)", SECTION)
     _header(ws, 5, ["Type", "Taxable gain (€)"])
     first = 6
+    hh = rep.household
+    other = rep.other_gains()
     for n, (k, (name, _nl)) in enumerate(LAW_TYPES.items()):
+        v = float(sim.extra.get(k, 0.0) or 0.0) + sum(other[p].get(k, 0.0) for p in hh.ids)
         _write(ws, first + n, 1, name)
-        _write(ws, first + n, 2, float(sim.extra.get(k, 0.0) or 0.0), INPUT, EUR, INPUT_FILL)
+        _write(ws, first + n, 2, v, INPUT if hh.single else BODY, EUR, INPUT_FILL if hh.single else None)
     last_extra = first + len(LAW_TYPES) - 1
 
     top = last_extra + 2
@@ -322,9 +408,20 @@ def _simulator(ws, rep: Report, sim: Simulation, R: dict, refs: dict):
     proceeds_rng = f"${col['proceeds']}${g0}:${col['proceeds']}${g1}"
 
     _write(ws, top, 1, "Result", SECTION)
+    if not hh.single:                     # per person: values from the app (each has their own exemption)
+        _header(ws, top + 1, ["Person", "Net taxable gain", "Exemption", "Room left", "Meerwaardebelasting"])
+        for n, pid in enumerate(hh.ids):
+            pp = sim.summary["people"][pid]
+            for c, v in enumerate([hh.name(pid), pp["net"], pp["exemption"], pp["room"], pp["tax"]], 1):
+                _write(ws, top + 2 + n, c, v, fmt=None if c == 1 else EUR)
+        _write(ws, table_top - 1, 1, "Per position: what is sold, and the largest quantity you can sell on top of "
+                                     "everything else without paying tax (for every owner)", SECTION)
+        _table(ws, SIM, rows, top=table_top, freeze=False)
+        ws.column_dimensions["A"].width = 44
+        return
     items = [
         ("Sold this year (in your exports)", f'=SUMIFS({t["taxable_gain_eur"]},{t["status"]},"Sold")', BODY),
-        ("Other sales (above)", f"=SUM(B{first}:B{last_extra})", BODY),
+        ("Other sales (above; your profile's plus the app's)", f"=SUM(B{first}:B{last_extra})", BODY),
         ("Simulated sales (below)", f"=SUM({gain_rng})", BODY),
         ("Net taxable gain", f"=B{top + 1}+B{top + 2}+B{top + 3}", BOLD),
         ("Exemption (from Summary)", f"={refs['exemption']}", BODY),
@@ -375,6 +472,10 @@ def _explain(ws, rep: Report, sim: Simulation):
         "Income: dividends, interest and tax withheld.",
         "Meerwaardebelasting: sales in the tax year (status Sold) and every open position as if sold on the value date "
         "(status Open), with the purchase value the law allows and the taxable gain.",
+        "Exemption: per person and year, the exemption available (own amount plus what earlier years carried forward), "
+        "what was used and what carries forward.",
+        "Income tax: dividends and interest per year, person and broker, with foreign tax, the dividend exemption and "
+        "the 30% Belgian tax to declare.",
         "Simulator: the sales simulated in the app, other sales you entered, and per position the largest quantity you "
         "can still sell without tax.",
         "Prices: current and 31-12-2025 prices with their date and source.",
@@ -403,7 +504,12 @@ def _explain(ws, rep: Report, sim: Simulation):
         f"Bonds booked at 0 on maturity are repaid at 100%: {yes(o.bond_redemption_at_par)}",
         f"Original price instead of the 31-12-2025 price when higher, for sales until "
         f"{rules.original_price_until:%d-%m-%Y}: {yes(rules.use_original_if_higher)}",
-        f"Exemption €{rules.exemption:,.2f} · rate {rules.rate:.0%}",
+        f"Exemption {rules.year}: own amount €{rules.exemption:,.2f} · rate {rules.rate:.0%} · carry-forward rule: "
+        f"{rep.exemption_rules().carry_rule}",
+        "People: " + ", ".join(p.name for p in rep.household.persons)
+        + ("" if rep.household.single else " · ownership per broker: " + (", ".join(
+            f"{b} " + "/".join(f"{rep.household.name(k)} {v:.0%}" for k, v in rep.household.share(b).items())
+            for b in rep.portfolio.brokers()))),
         f"Online price lookups: {'on' if rep.prices.fetcher else 'off'}",
     ]:
         line("• " + text)
@@ -450,6 +556,8 @@ def build_workbook(rep: Report, simulation: Simulation | None = None) -> Workboo
         tax = tax.sort_values(["status", "taxable_gain_eur"], ascending=[False, False])
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
     _table(sheets["Prices"], PRICES, _price_rows(rep))
+    _exemption_sheet(sheets["Exemption"], rep)
+    _income_tax_sheet(sheets["Income tax"], rep)
 
     refs = _summary(ws_sum, rep, R)
     _simulator(sheets["Simulator"], rep, sim, R, refs)
@@ -478,3 +586,211 @@ def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulatio
 
 def default_name(rep: Report) -> str:
     return f"meerwaarde-{rep.tax.today:%Y-%m-%d}.xlsx"
+
+
+# ---------------------------------------------------------------- yearly tax report (backlog item 5)
+TR_SALES = [
+    Col("date", "Date", DATE, 11), Col("broker", "Broker", width=10), Col("asset", "Asset", width=15),
+    Col("name", "Name", width=36), Col("type", "Type", width=20), Col("qty", "Quantity", QTY, 12),
+    Col("price_eur", "Sale price (€)", PRICE, 13), Col("price_31dec_eur", "Price 31-12-2025 (€)", PRICE, 13),
+    Col("proceeds_eur", "Proceeds (€)", EUR, 15), Col("acquisition_eur", "Purchase value used (€)", EUR, 16),
+    Col("taxable_gain_eur", "Taxable gain (€)", EUR, 15),
+]
+TR_INCOME = [
+    Col("date", "Date", DATE, 11), Col("broker", "Broker", width=10), Col("asset", "Asset", width=15),
+    Col("name", "Name", width=44), Col("kind", "Kind", width=12), Col("amount_eur", "Amount (€)", EUR, 14),
+    Col("amount_local", "Amount (local)", "#,##0.00", 14), Col("currency", "Currency", width=9),
+]
+TR_TOB = [
+    Col("date", "Date", DATE, 11), Col("broker", "Broker", width=10), Col("asset", "Asset", width=15),
+    Col("name", "Name", width=36), Col("qty", "Quantity", QTY, 10), Col("price", "Price", PRICE, 12),
+    Col("amount_eur", "Stock exchange tax (€)", EUR, 16),
+]
+
+
+def _tr_report_sheet(ws, ytr) -> None:
+    from .engine.income_tax import CATEGORIES
+    for col, w in zip("ABCDEF", (44, 16, 16, 16, 18, 40)):
+        ws.column_dimensions[col].width = w
+    _write(ws, 1, 1, ytr.title, TITLE)
+    _write(ws, 2, 1, ytr.subtitle, NOTE)
+    _write(ws, 4, 1, "Rate meerwaardebelasting")
+    _write(ws, 4, 2, 0.10, INPUT, PCT, INPUT_FILL)
+    _write(ws, 5, 1, "Rate on dividends and interest")
+    _write(ws, 5, 2, 0.30, INPUT, PCT, INPUT_FILL)
+    _write(ws, 6, 1, "Blue figures on yellow can be changed; everything else follows.", NOTE)
+    many = len(ytr.persons) > 1
+    row = 8
+    cgt_cells, inc_cells = [], []
+
+    _write(ws, row, 1, f"1. Meerwaardebelasting {ytr.year} (capital gains, 10%)", SECTION)
+    row += 1
+    for pid, name in ytr.persons:
+        p = ytr.cgt["people"][pid]
+        if many:
+            _write(ws, row, 1, name, BOLD)
+            row += 1
+        _header(ws, row, ["Type (as the law defines it)", "Gains", "Losses", "Net"])
+        first = row + 1
+        for n, (k, (tname, _nl)) in enumerate(LAW_TYPES.items()):
+            r = first + n
+            v = p["per_type"][k]
+            _write(ws, r, 1, tname)
+            _write(ws, r, 2, round(v["gains"], 2), fmt=EUR)
+            _write(ws, r, 3, round(v["losses"], 2), fmt=EUR)
+            _write(ws, r, 4, f"=B{r}+C{r}", fmt=EUR)
+        last = first + len(LAW_TYPES) - 1
+        r = last + 1
+        e = ytr.exemption.get(pid)
+        _write(ws, r, 1, "Net taxable gain", BOLD, border=TOTAL_BORDER)
+        _write(ws, r, 4, f"=SUM(D{first}:D{last})", BOLD, EUR, border=TOTAL_BORDER)
+        label = "Exemption available"
+        if e and e.carried:
+            label += f" (own €{e.base:,.0f} + carried €{e.carried:,.0f})"
+        _write(ws, r + 1, 1, label)
+        _write(ws, r + 1, 4, p["exemption"], INPUT, EUR, INPUT_FILL)
+        _write(ws, r + 2, 1, "Taxable above the exemption")
+        _write(ws, r + 2, 4, f"=MAX(0,D{r}-D{r + 1})", fmt=EUR)
+        _write(ws, r + 3, 1, "Meerwaardebelasting", BOLD, border=TOTAL_BORDER)
+        _write(ws, r + 3, 4, f"=D{r + 2}*$B$4", BOLD, EUR, border=TOTAL_BORDER)
+        cgt_cells.append(f"D{r + 3}")
+        if e:
+            _write(ws, r + 4, 1, f"Exemption used €{e.used:,.2f}; carried forward to later years €{e.carry_out:,.0f}"
+                                 + ("" if ytr.complete else " (if the rest of the year adds no gain)"), NOTE)
+        row = r + 6
+
+    _write(ws, row, 1, f"2. Dividends and interest {ytr.year} (30%)", SECTION)
+    row += 1
+    for pid, name in ytr.persons:
+        it = ytr.income[pid]
+        if many:
+            _write(ws, row, 1, name, BOLD)
+            row += 1
+        _header(ws, row, ["Income", "Broker", "Gross", "Foreign tax", "Net (taxable base)"])
+        first = row + 1
+        for n, l in enumerate(it.lines):
+            r = first + n
+            _write(ws, r, 1, CATEGORIES[l.category])
+            _write(ws, r, 2, l.broker)
+            _write(ws, r, 3, l.gross, fmt=EUR)
+            _write(ws, r, 4, l.foreign_tax, fmt=EUR)
+            _write(ws, r, 5, f"=C{r}+D{r}", fmt=EUR)
+        last = max(first, first + len(it.lines) - 1)
+        r = first + max(1, len(it.lines))
+        rng = lambda c: f"{c}{first}:{c}{last}"  # noqa: E731
+        _write(ws, r, 1, "Dividend exemption available (shares only)")
+        _write(ws, r, 5, it.exemption_available, INPUT, EUR, INPUT_FILL)
+        _write(ws, r + 1, 1, "Dividend exemption used")
+        _write(ws, r + 1, 5, f'=MIN(MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["shares"]}")),E{r})', fmt=EUR)
+        _write(ws, r + 2, 1, "Taxable at 30%")
+        _write(ws, r + 2, 5, f'=MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["shares"]}"))-E{r + 1}'
+                             f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["funds"]}"))'
+                             f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["interest"]}"))', fmt=EUR)
+        _write(ws, r + 3, 1, "Tax on dividends and interest", BOLD, border=TOTAL_BORDER)
+        _write(ws, r + 3, 5, f"=E{r + 2}*$B$5", BOLD, EUR, border=TOTAL_BORDER)
+        inc_cells.append(f"E{r + 3}")
+        row = r + 5
+
+    _write(ws, row, 1, f"3. Stock exchange tax {ytr.year}", SECTION)
+    _header(ws, row + 1, ["Broker", "Trades", "Amount", "", "", "Basis"])
+    first = row + 2
+    for n, t in enumerate(ytr.tob.itertuples()):
+        r = first + n
+        _write(ws, r, 1, t.broker)
+        _write(ws, r, 2, int(t.trades), fmt=COUNT)
+        _write(ws, r, 3, float(t.amount_eur), fmt=EUR)
+        _write(ws, r, 6, t.basis, NOTE)
+    r = first + max(1, len(ytr.tob))
+    _write(ws, r, 1, "Total", BOLD, border=TOTAL_BORDER)
+    _write(ws, r, 3, f"=SUM(C{first}:C{r - 1})", BOLD, EUR, border=TOTAL_BORDER)
+    tob_cell = f"C{r}"
+    row = r + 2
+
+    _write(ws, row, 1, "Totals", SECTION)
+    _write(ws, row + 1, 1, "Meerwaardebelasting")
+    _write(ws, row + 1, 2, "=" + "+".join(cgt_cells), BOLD, EUR)
+    _write(ws, row + 2, 1, "Tax on dividends and interest")
+    _write(ws, row + 2, 2, "=" + "+".join(inc_cells), BOLD, EUR)
+    _write(ws, row + 3, 1, "Stock exchange tax (already withheld by the brokers)")
+    _write(ws, row + 3, 2, f"={tob_cell}", fmt=EUR)
+    _write(ws, row + 5, 1, "Estimates from your broker exports, not tax advice.", NOTE)
+    _page(ws)
+
+
+def _tr_checklist_sheet(ws, ytr) -> None:
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 120
+    row = 1
+    _write(ws, row, 1, "Checklist", TITLE)
+    row += 2
+    for i, c in enumerate(ytr.checklist, 1):
+        _write(ws, row, 1, "☐")
+        _write(ws, row, 2, f"{i}. {c}", align=WRAP)
+        ws.row_dimensions[row].height = 13.5 * max(1, math.ceil(len(c) / 125))
+        row += 1
+    row += 1
+    _write(ws, row, 1, "Foreign accounts", SECTION)
+    row += 1
+    _header(ws, row, ["Broker", "Account held at", "Country"], start_col=1)
+    ws.column_dimensions["C"].width = 16
+    for a in ytr.accounts:
+        row += 1
+        _write(ws, row, 1, a["broker"])
+        _write(ws, row, 2, a["institution"])
+        _write(ws, row, 3, a["country"])
+    row += 2
+    if ytr.notes:
+        _write(ws, row, 1, "Notes", SECTION)
+        for n in ytr.notes:
+            row += 1
+            _write(ws, row, 2, "• " + n, align=WRAP)
+        row += 2
+    _write(ws, row, 1, "How it's calculated", SECTION)
+    for t in ytr.rules_text:
+        row += 1
+        _write(ws, row, 2, "• " + t, NOTE, align=WRAP)
+        ws.row_dimensions[row].height = 12 * max(1, math.ceil(len(t) / 135))
+    _page(ws)
+
+
+def tax_report_workbook(ytr) -> Workbook:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    _tr_report_sheet(ws, ytr)
+    sales = wb.create_sheet(f"Sales {ytr.year}")
+    cols = list(TR_SALES)
+    if len(ytr.persons) > 1:
+        cols += [Col(f"share_{pid}", f"Share {name}", PCT, 12) for pid, name in ytr.persons]
+    first, last, L = _table(sales, cols, _records(ytr.sales))
+    if last >= first:
+        _write(sales, last + 1, 1, "Total", BOLD, border=TOTAL_BORDER)
+        g = L["taxable_gain_eur"]
+        _write(sales, last + 1, len(TR_SALES), f"=SUM({g}{first}:{g}{last})", BOLD, EUR, border=TOTAL_BORDER)
+    _table(wb.create_sheet(f"Income {ytr.year}"), TR_INCOME, _records(ytr.income_detail))
+    _table(wb.create_sheet("Stock exchange tax"), TR_TOB, _records(ytr.tob_detail))
+    ex = wb.create_sheet("Exemption")
+    rows = [dict(person=ytr.person_name(pid), year=e.year, base=e.base, carried_in=e.carried, available=e.available,
+                 net_gain=round(e.net_gain, 2), used=round(e.used, 2), carry_out=e.carry_out, expired=e.expired,
+                 carried_from=", ".join(f"{y}: €{a:,.0f}" for y, a in e.carried_in))
+            for pid, hist in ytr.history.items() for e in hist]
+    _table(ex, EXEMPTION, rows)
+    _tr_checklist_sheet(wb.create_sheet("Checklist"), ytr)
+    for w in wb.worksheets[1:]:
+        _page(w)
+    wb.calculation.fullCalcOnLoad = True
+    wb.properties.creator = "meerwaarde"
+    wb.properties.title = ytr.title
+    return wb
+
+
+def tax_report_xlsx(ytr, target: str | Path | None = None):
+    wb = tax_report_workbook(ytr)
+    if target is None:
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+    path = Path(target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(path)
+    return path

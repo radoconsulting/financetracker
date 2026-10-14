@@ -83,7 +83,7 @@ def test_summary_is_formulas_over_the_sheets_with_editable_exemption(rep):
     brokers = [ws.cell(r, 1).value for r in range(6, 8)]
     assert brokers == ["Alpha", "Beta"]
     assert ws.cell(6, 2).value.startswith("=SUMIFS('Sales'!")
-    ex = ws.cell(cells["Exemption (change it here)"].row, 2)
+    ex = ws.cell(cells["Exemption 2026 (change it here)"].row, 2)
     assert ex.value == 10000.0 and ex.font.color.rgb.endswith("0000FF")
     tax = ws.cell(cells["Meerwaardebelasting"].row, 2).value
     assert tax.startswith("=B") and "*B" in tax

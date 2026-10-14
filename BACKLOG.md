@@ -12,23 +12,6 @@ deposits and withdrawals.
 - Cash movements reconcile with the *Transacties* export (deposits − withdrawals + trades = cash balance).
 - The Bund redemption payout replaces the "redeemed at par" assumption.
 
-### 2. Dividend & interest tax · M · needs 1 for DEGIRO
-What you owe on income that foreign brokers don't withhold Belgian tax on.
-- Per year: dividends and interest per broker, foreign tax withheld, and the 30% Belgian tax to declare.
-- The €833-style dividend exemption (indexed) applied to dividends from shares only, not from funds or ETFs.
-- Amounts grouped the way the tax return asks for them.
-
-### 4. Exemption over the years · M
-- Keep a history of realized gains per tax year so unused exemption carries forward (+€1,000 a year, at most
-  €15,000), and show the exemption available this year with how it was built up.
-- Optional second person: each partner has their own exemption; positions can be owned 100/0, 50/50 or custom,
-  and the tax is calculated per person.
-
-### 5. Yearly tax report · M · needs 2 and 4
-One report per year for your return or accountant: meerwaardebelasting (sales, losses, exemption used, tax),
-dividends and interest to declare, stock exchange tax paid per broker, and a checklist item to report foreign
-accounts (DEGIRO, LYNX, Bitvavo) to the NBB's central contact point. Export as Excel and PDF.
-
 ## Next
 
 ### 6. Year-end gain harvesting · M · needs 4
@@ -81,4 +64,7 @@ between ETFs (for example S&P 500 inside MSCI World inside ACWI).
 
 ## Done
 
+- 2. Dividend & interest tax · done 2026-10-14 · per year, person and broker; 30% after foreign tax; exemption for shares only. DEGIRO dividends still need item 1 (or entering them as other income).
 - 3. Excel export · done 2026-10-14 · `meerwaarde report --xlsx`, sidebar button in the app; totals are live formulas, engine results are values (docs/decisions.md D12).
+- 4. Exemption over the years · done 2026-10-14 · carry-forward (+€1,000/yr, 5 yrs, max €15,000), partner with ownership shares per broker/position, Tax years tab, profile.json (D14, D15).
+- 5. Yearly tax report · done 2026-10-14 · Tax report tab, `meerwaarde tax-report`, Excel and PDF, checklist with foreign accounts; DEGIRO stock exchange tax is an estimate until item 1.

@@ -18,6 +18,7 @@ INTEREST = "interest"
 WITHHOLDING = "withholding"
 FX_RESULT = "fx_result"      # realized currency result reported by the broker
 FEE = "fee"                  # standalone cost not tied to a trade
+TOB = "tob"                  # stock exchange tax reported per trade; information only (already in the trade's costs)
 
 # Asset classes (display) -> law types (meerwaardebelasting)
 ASSET_CLASSES = ("Crypto", "ETF", "Bond ETF", "Fund", "Stock", "Bond", "Turbo", "Cash/FX", "Insurance", "Gold")
@@ -141,4 +142,18 @@ class IncomeRow:
     amount_eur: float
     amount_local: Optional[float] = None
     currency: str = "EUR"
+    note: str = ""
+    asset_class: str = ""             # of the paying asset: decides whether the dividend exemption applies
+
+
+@dataclass
+class TobRow:
+    """Stock exchange tax (beurstaks / TOB) on one trade, as reported by the broker. Already part of the trade's costs."""
+    broker: str
+    date: datetime
+    asset: str
+    name: str
+    qty: float
+    price: Optional[float]
+    amount_eur: float                 # negative = paid
     note: str = ""

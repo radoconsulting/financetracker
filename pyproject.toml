@@ -15,6 +15,7 @@ dependencies = [
   "pandas>=2.0",
   "requests>=2.31",
   "openpyxl>=3.1",
+  "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]

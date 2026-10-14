@@ -19,7 +19,9 @@ PRIVATE = ROOT / "private"
 sys.path.insert(0, str(ROOT / "src"))
 
 from meerwaarde.engine.tax import TaxCalculator  # noqa: E402
-from meerwaarde.export import to_xlsx  # noqa: E402
+from meerwaarde.export import tax_report_xlsx, to_xlsx  # noqa: E402
+from meerwaarde.pdf_report import tax_report_pdf  # noqa: E402
+from meerwaarde.taxreport import tax_year_report  # noqa: E402
 from meerwaarde.report import build_report  # noqa: E402
 
 TOLERANCE = 0.05
@@ -47,7 +49,18 @@ def metrics() -> dict:
                               for h in rep.portfolio.holdings()}
     out["rows"] = {f"{k[0]}|{k[1]}": n for k, n in sorted(Counter((t.broker, t.kind) for t in rep.portfolio.transactions).items())}
     out["warnings"] = len(rep.warnings)
-    to_xlsx(rep)    # smoke test: the Excel export must work on the real data (values are checked by the tests)
+    out["income_tax"] = {f"{r.year}|{r.person}": {k: float(getattr(r, k)) for k in ("shares_net", "funds_net", "interest_net",
+                                                                                     "foreign_tax", "taxable", "tax")}
+                         for r in rep.income_tax_summary().itertuples()}
+    out["tob"] = {f"{y}|{r.broker}": float(r.amount_eur) for y in (2023, 2024, 2025, 2026) for r in rep.tob_summary(y).itertuples()}
+    out["exemption"] = {f"{r.year}|{r.person}": {k: float(getattr(r, k)) for k in ("available", "used", "carry_out")}
+                        for r in rep.exemption_table(2027).itertuples()}
+    # smoke tests: the exports must work on the real data (their values are checked by the unit tests)
+    to_xlsx(rep)
+    for y in (2025, 2026):
+        ytr = tax_year_report(rep, y)
+        tax_report_xlsx(ytr)
+        tax_report_pdf(ytr)
     return out
 
 

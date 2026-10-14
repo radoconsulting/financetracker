@@ -13,18 +13,23 @@ import streamlit as st
 
 from meerwaarde.engine.portfolio import Portfolio, PortfolioOptions
 from meerwaarde.engine.tax import TaxCalculator, TaxRules
-from meerwaarde.export import XLSX_MIME, default_name, to_xlsx
+from meerwaarde.engine.income_tax import CATEGORIES
+from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.models import LAW_TYPES, law_type
 from meerwaarde.parsers import combine, parse_file
+from meerwaarde.pdf_report import tax_report_pdf
 from meerwaarde.prices import PriceBook
 from meerwaarde.prices.fetch import Fetcher
-from meerwaarde.report import RULES_TEXT, Report
+from meerwaarde.profile import INCOME_FIELDS, TaxProfile
+from meerwaarde.report import INCOME_RULES_TEXT, RULES_TEXT, Report
+from meerwaarde.taxreport import tax_year_report
 
 st.set_page_config(page_title="Meerwaarde", page_icon="📈", layout="wide")
 
 DATA = Path(os.environ.get("MEERWAARDE_DATA") or Path.home() / ".local" / "share" / "meerwaarde")
 UPLOADS = DATA / "uploads"
 PRICES_CSV = DATA / "prices.csv"
+PROFILE = DATA / "profile.json"
 CACHE = DATA / "cache"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
@@ -104,9 +109,12 @@ with st.sidebar:
     fetch = st.toggle("Look up prices online", value=os.environ.get("MEERWAARDE_OFFLINE") != "1", help="Bitvavo for crypto, justETF for ETFs, Yahoo Finance for shares, ECB for exchange rates.")
     own_wallet = st.toggle("Crypto withdrawals go to my own wallet", value=True, help="Transfers to a hardware wallet such as a Ledger are not sales; the coins keep their purchase price.")
     conversions = st.toggle("Treat same-day ISIN swaps as conversions", value=True, help="For example Royal Dutch Shell A into Shell plc: not a sale.")
-    year = st.number_input("Tax year", min_value=2026, max_value=2035, value=2026, step=1)
-    exemption = st.number_input("Exemption (€)", min_value=0.0, max_value=50000.0, value=10000.0, step=500.0,
-                                help="€10,000 per person for 2026. From 2027 unused exemption can add up to €1,000 a year, to at most €15,000.")
+    profile = TaxProfile.load(PROFILE)
+    year = int(st.number_input("Tax year", min_value=2026, max_value=2035, value=2026, step=1))
+    exemption = st.number_input(f"Own exemption {year} (€)", min_value=0.0, max_value=50000.0,
+                                value=float(profile.exemption_rules().base_for(year)), step=50.0, key=f"exemption-{year}",
+                                help="€10,000 per person for 2026, indexed later (enter the published amount). Exemption "
+                                     "carried forward from earlier years is added automatically (Tax years tab).")
     original = st.toggle("Use the original price when it's higher than 31-12-2025", value=True,
                          help="Allowed for sales until the end of 2030, and only to reduce a gain.")
     if st.button("Refresh prices", width="stretch"):
@@ -144,7 +152,8 @@ pb = PriceBook(statements, fetch=fetch, cache_dir=CACHE, reference_date=rules.re
 if PRICES_CSV.exists():
     pb.load_overrides_csv(PRICES_CSV.read_text())
 calc = TaxCalculator(pf, pb, rules)
-rep = Report(pf, pb, calc, parse_warnings + pf.warnings)
+rep = Report(pf, pb, calc, parse_warnings + pf.warnings, profile)
+hh = profile.household
 
 with st.spinner("Looking up prices…"):
     holdings_df = rep.holdings()
@@ -156,7 +165,7 @@ def money(v):
     return "—" if v is None or pd.isna(v) else f"€{v:,.0f}"
 
 
-tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Prices", "Data"])
+tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Tax report", "Tax years", "Prices", "Data"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -250,13 +259,21 @@ sold_lines = calc.sold_lines()
 open_lines = calc.open_lines()
 with tabs[2]:
     st.subheader(f"Meerwaardebelasting {rules.year} if you sold everything today")
-    summ = TaxCalculator.summarize(sold_lines + open_lines, rules)
-    sold_total = sum(l.taxable_gain for l in sold_lines)
+    summ = rep.tax_summary(sold_lines + open_lines)
+    sold_total = sum(v["sold"] for v in summ["per_type"].values())
+    carried = sum(e[-1].carried for e in (rep.exemption_history(p) for p in hh.ids) if e)
     c = st.columns(4)
-    c[0].metric("Already sold this year", money(sold_total), help="Taxable gain of this year's sales")
+    c[0].metric("Already sold this year", money(sold_total), help="Taxable gain of this year's sales, including other sales from the Tax years tab")
     c[1].metric("Taxable gain if you sold the rest", money(summ["net"] - sold_total))
-    c[2].metric("Exemption", money(rules.exemption))
-    c[3].metric("Meerwaardebelasting", money(summ["tax"]), help="10% of the net gain above the exemption")
+    c[2].metric("Exemption", money(summ["exemption"]),
+                help=("Per person. " if not hh.single else "") + (f"Includes {money(carried)} carried forward from earlier years." if carried else "Nothing carried forward from earlier years."))
+    c[3].metric("Meerwaardebelasting", money(summ["tax"]), help="10% of the net gain above the exemption, per person")
+    if not hh.single:
+        st.dataframe(pd.DataFrame([dict(person=hh.name(pid), net=pp["net"], exemption=pp["exemption"], taxable=pp["taxable"], tax=pp["tax"])
+                                   for pid, pp in summ["people"].items()]), hide_index=True, width="stretch", column_config={
+            "person": "Person", "net": st.column_config.NumberColumn("Net taxable gain", format=EUR),
+            "exemption": st.column_config.NumberColumn("Exemption", format=EUR),
+            "taxable": st.column_config.NumberColumn("Taxable", format=EUR), "tax": st.column_config.NumberColumn("Meerwaardebelasting", format=EUR)})
     per = pd.DataFrame([dict(type=LAW_NAMES[k], sold=v["sold"], open=v["open"], net=v["sold"] + v["open"])
                         for k, v in summ["per_type"].items()])
     st.dataframe(per, hide_index=True, width="stretch", column_config={
@@ -291,7 +308,7 @@ with tabs[3]:
     base_df["sell"] = base_df.key.map(lambda k: state.get(k, {}).get("sell", 0.0))
     base_df["price"] = [state.get(k, {}).get("price") or p for k, p in zip(base_df.key, base_df.price)]
 
-    with st.expander("Other sales this year that aren't in your exports"):
+    with st.expander("Other sales this year that aren't in your exports (what-if; real ones go on the Tax years tab)"):
         extra = {}
         cols = st.columns(len(LAW_TYPES))
         for i, (k, (name, nl)) in enumerate(LAW_TYPES.items()):
@@ -310,15 +327,18 @@ with tabs[3]:
     price_over = {tuple(k.split("|", 1)): v["price"] for k, v in state.items() if v.get("price")}
     sim = rep.simulate(sell=sell, price_override=price_over, extra=extra)
     sim_lines, summ = sim.lines, sim.summary
-    room = rules.exemption - summ["net"]
+    room = summ["room"]
     c = st.columns(4)
     c[0].metric("Tax-free room left", money(max(0.0, room)) if room >= 0 else "€0",
                 delta=None if room >= 0 else f"over by {money(-room)}", delta_color="inverse")
     c[1].metric("Net taxable gain", money(summ["net"]))
     c[2].metric("Cash from these sales", money(sum(l.proceeds for l in sim_lines)))
     c[3].metric("Meerwaardebelasting", money(summ["tax"]))
-    st.progress(min(1.0, max(0.0, summ["net"] / rules.exemption)) if rules.exemption else 1.0,
-                text=f"{money(max(0.0, summ['net']))} of the {money(rules.exemption)} exemption used")
+    st.progress(min(1.0, max(0.0, summ["net"] / summ["exemption"])) if summ["exemption"] else 1.0,
+                text=f"{money(max(0.0, summ['net']))} of the {money(summ['exemption'])} exemption used")
+    if not hh.single:
+        st.caption(" · ".join(f"{hh.name(pid)}: room {money(max(0.0, pp['room']))}, tax {money(pp['tax'])}"
+                              for pid, pp in summ["people"].items()))
 
     out_df = sim.positions
     st.dataframe(out_df, hide_index=True, width="stretch", column_config={
@@ -341,8 +361,170 @@ with tabs[3]:
         st.rerun()
     st.caption("The Excel export (sidebar) includes this simulation.")
 
-# ---------------------------------------------------------------- prices
+# ---------------------------------------------------------------- tax report
 with tabs[4]:
+    first_year = min([d.year for d in [t.ts for t in pf.transactions]] + [rules.year])
+    years = list(range(max(2024, first_year), max(rules.year, date.today().year) + 1))
+    ry = st.selectbox("Income year", years, index=years.index(rules.year) if rules.year in years else len(years) - 1,
+                      format_func=lambda y: f"{y} (tax return {y + 1})")
+    ytr = tax_year_report(rep, ry)
+    st.caption(ytr.subtitle)
+    inc_tax = sum(i.tax for i in ytr.income.values())
+    tob_total = float(ytr.tob["amount_eur"].sum()) if not ytr.tob.empty else 0.0
+    c = st.columns(3)
+    c[0].metric("Meerwaardebelasting", money(ytr.cgt["tax"]), help="On this year's sales (and other sales on the Tax years tab)")
+    c[1].metric("Tax on dividends and interest", money(inc_tax), help="30% on what foreign brokers paid out, after the dividend exemption")
+    c[2].metric("Stock exchange tax", money(tob_total), help="Withheld by the brokers; DEGIRO's is an estimate")
+    d1, d2, _ = st.columns([1, 1, 3])
+    d1.download_button("Excel", data=lambda: tax_report_xlsx(ytr), file_name=f"tax-report-{ry}.xlsx", mime=XLSX_MIME,
+                       icon=":material/download:", on_click="ignore", width="stretch")
+    d2.download_button("PDF", data=lambda: tax_report_pdf(ytr), file_name=f"tax-report-{ry}.pdf", mime="application/pdf",
+                       icon=":material/download:", on_click="ignore", width="stretch")
+
+    st.subheader("Meerwaardebelasting")
+    for pid, name in ytr.persons:
+        pp, e = ytr.cgt["people"][pid], ytr.exemption.get(pid)
+        if not hh.single:
+            st.markdown(f"**{name}**")
+        st.dataframe(pd.DataFrame([dict(type=LAW_NAMES[k], gains=v["gains"], losses=v["losses"], net=v["gains"] + v["losses"])
+                                   for k, v in pp["per_type"].items() if abs(v["gains"]) + abs(v["losses"]) > 0.005]),
+                     hide_index=True, width="stretch", column_config={
+                         "type": "Type", "gains": st.column_config.NumberColumn("Gains", format=EUR),
+                         "losses": st.column_config.NumberColumn("Losses", format=EUR), "net": st.column_config.NumberColumn("Net", format=EUR)})
+        txt = f"Net taxable gain {money(pp['net'])} · exemption {money(pp['exemption'])}"
+        if e and e.carried:
+            txt += f" (own {money(e.base)} + carried {money(e.carried)})"
+        txt += f" · tax {money(pp['tax'])}"
+        if e:
+            txt += f" · carries forward {money(e.carry_out)}"
+        st.caption(txt)
+    if not ytr.sales.empty:
+        with st.expander(f"Sales in {ry} ({len(ytr.sales)})"):
+            st.dataframe(ytr.sales, hide_index=True, width="stretch")
+
+    st.subheader("Dividends and interest")
+    for pid, name in ytr.persons:
+        it = ytr.income[pid]
+        if not hh.single:
+            st.markdown(f"**{name}**")
+        if it.lines:
+            st.dataframe(pd.DataFrame([dict(income=CATEGORIES[l.category], broker=l.broker, gross=l.gross, foreign_tax=l.foreign_tax, net=l.net)
+                                       for l in it.lines]), hide_index=True, width="stretch", column_config={
+                "income": "Income", "broker": "Broker", "gross": st.column_config.NumberColumn("Gross", format=EUR),
+                "foreign_tax": st.column_config.NumberColumn("Foreign tax", format=EUR),
+                "net": st.column_config.NumberColumn("Net (taxable base)", format=EUR)})
+        st.caption(f"Dividend exemption used {money(it.exemption_used)} of {money(it.exemption_available)} · "
+                   f"taxable at 30% {money(it.taxable)} · tax {money(it.tax)}")
+
+    st.subheader("Stock exchange tax")
+    st.dataframe(ytr.tob, hide_index=True, width="stretch", column_config={
+        "broker": "Broker", "trades": "Trades", "amount_eur": st.column_config.NumberColumn("Amount", format=EUR), "basis": "Basis"})
+
+    st.subheader("Checklist")
+    for i, item in enumerate(ytr.checklist):
+        st.checkbox(item, key=f"check-{ry}-{i}")
+    st.dataframe(pd.DataFrame(ytr.accounts), hide_index=True, width="stretch",
+                 column_config={"broker": "Broker", "institution": "Account held at", "country": "Country"})
+    for n in ytr.notes:
+        st.info(n)
+    with st.expander("How dividends and interest are taxed"):
+        st.markdown("\n".join(f"- {t}" for t in INCOME_RULES_TEXT))
+
+# ---------------------------------------------------------------- tax years: people, exemption history, other income
+with tabs[5]:
+    st.subheader("People")
+    has_partner = st.toggle("Include a partner (each person has their own exemptions)", value=not hh.single)
+    partner_name = st.text_input("Partner's name", value=hh.name("partner") if not hh.single else "Partner",
+                                 disabled=not has_partner)
+    you_name = st.text_input("Your name", value=hh.persons[0].name)
+    if has_partner:
+        st.caption("Ownership per broker: your share in %. The rest belongs to your partner. For a joint account or "
+                   "assets in the marital community use 50%.")
+        cols = st.columns(max(1, len(brokers)))
+        own = {}
+        for i, b in enumerate(brokers):
+            cur = hh.share(b).get("you", 1.0) if not hh.single else 1.0
+            own[b] = cols[i].number_input(b, min_value=0, max_value=100, value=int(round(cur * 100)), step=5, key=f"own-{b}")
+        pos_rows = [dict(position=f"{h.broker}|{h.asset}", name=h.name,
+                         your_share=(hh.positions.get(f"{h.broker}|{h.asset}", {}).get("you", None)))
+                    for h in pf.holdings()]
+        pos_df = pd.DataFrame(pos_rows, columns=["position", "name", "your_share"])
+        pos_df["your_share"] = [None if v is None else round(float(v) * 100) for v in pos_df["your_share"]]
+        with st.expander("Exceptions per position"):
+            pos_ed = st.data_editor(pos_df, hide_index=True, width="stretch", key="own-pos",
+                                    disabled=["position", "name"], column_config={
+                                        "position": None, "name": "Position",
+                                        "your_share": st.column_config.NumberColumn("Your share (%)", min_value=0, max_value=100,
+                                                                                    help="Empty: the broker's split")})
+
+    st.subheader("Exemption per year")
+    st.dataframe(rep.exemption_table(max(rules.year, date.today().year) + 1), hide_index=True, width="stretch", column_config={
+        "person": "Person", "year": st.column_config.NumberColumn("Year", format="%d"),
+        "base": st.column_config.NumberColumn("Own exemption", format=EUR),
+        "carried_in": st.column_config.NumberColumn("Carried in", format=EUR),
+        "available": st.column_config.NumberColumn("Available", format=EUR),
+        "net_gain": st.column_config.NumberColumn("Net taxable gain", format=EUR),
+        "used": st.column_config.NumberColumn("Used", format=EUR),
+        "carry_out": st.column_config.NumberColumn("Carried forward", format=EUR),
+        "expired": st.column_config.NumberColumn("Expired", format=EUR), "carried_from": "Carried in from"})
+    st.caption("Unused exemption adds at most €1,000 a year to the following 5 years (so up to €15,000 in total); "
+               "carried amounts are used first. A future year shows what is available if nothing else is sold.")
+    carry_rule = st.radio("Carry-forward rule", ["partial", "none_used"], horizontal=True,
+                          index=0 if profile.carry_rule == "partial" else 1,
+                          format_func=lambda r: {"partial": "Unused part of the year's exemption, max €1,000 (default)",
+                                                 "none_used": "€1,000 only in a year without a net gain"}[r],
+                          help="Sources differ on this detail; see docs/domain/meerwaardebelasting.md.")
+
+    st.subheader("Per year: amounts that aren't in your exports")
+    yrs = list(range(2026, max(rules.year, date.today().year) + 1))
+    ydf = pd.DataFrame([dict(year=y, exemption_base=profile.get(y).exemption_base,
+                             dividend_exemption=profile.get(y).dividend_exemption) for y in yrs])
+    yed = st.data_editor(ydf, hide_index=True, width="stretch", key="years-ed", disabled=["year"], column_config={
+        "year": st.column_config.NumberColumn("Year", format="%d"),
+        "exemption_base": st.column_config.NumberColumn("Own exemption meerwaardebelasting (€)", help="Empty: €10,000 or the latest amount entered"),
+        "dividend_exemption": st.column_config.NumberColumn("Dividend exemption (€)", help="Empty: €833")})
+    people_rows = []
+    for y in yrs:
+        yi = profile.get(y)
+        for pid in hh.ids:
+            inc = yi.income_for(pid)
+            people_rows.append(dict(year=y, person=pid, name=hh.name(pid), other_gains=sum(yi.gains_for(pid).values()) or None,
+                                    declared_net=yi.declared_for(pid), **{k: inc[k] or None for k in INCOME_FIELDS}))
+    ped = st.data_editor(pd.DataFrame(people_rows), hide_index=True, width="stretch", key="people-ed",
+                         disabled=["year", "name"], column_config={
+                             "year": st.column_config.NumberColumn("Year", format="%d"), "person": None, "name": "Person",
+                             "other_gains": st.column_config.NumberColumn("Other sales: taxable gain (€)", help="Sales at other banks or brokers; negative for a loss"),
+                             "declared_net": st.column_config.NumberColumn("Declared net gain (€)", help="Once filed: the figure in your tax return; replaces the calculated one for the carry-forward"),
+                             "dividends_shares": st.column_config.NumberColumn("Other dividends from shares (€)"),
+                             "dividends_funds": st.column_config.NumberColumn("Other fund/ETF distributions (€)"),
+                             "interest": st.column_config.NumberColumn("Other interest (€)"),
+                             "foreign_tax": st.column_config.NumberColumn("Foreign tax on those (€)")})
+    if st.button("Save", type="primary"):
+        profile.set_partner(partner_name.strip() or "Partner" if has_partner else None)
+        profile.household.persons[0].name = you_name.strip() or "You"
+        if has_partner:
+            profile.household.brokers = {b: {"you": v / 100, "partner": 1 - v / 100} for b, v in own.items()}
+            profile.household.positions = {r.position: {"you": r.your_share / 100, "partner": 1 - r.your_share / 100}
+                                           for r in pos_ed.itertuples() if pd.notna(r.your_share)}
+        profile.carry_rule = carry_rule
+        for r in yed.itertuples():
+            yi = profile.year(int(r.year))
+            yi.exemption_base = None if pd.isna(r.exemption_base) else float(r.exemption_base)
+            yi.dividend_exemption = None if pd.isna(r.dividend_exemption) else float(r.dividend_exemption)
+        for r in ped.itertuples():
+            if r.person not in profile.household.ids:
+                continue
+            yi = profile.year(int(r.year))
+            yi.other_gains[r.person] = {"fin": float(r.other_gains)} if pd.notna(r.other_gains) and r.other_gains else {}
+            yi.declared_net[r.person] = None if pd.isna(r.declared_net) else float(r.declared_net)
+            yi.other_income[r.person] = {k: float(getattr(r, k)) for k in INCOME_FIELDS if pd.notna(getattr(r, k)) and getattr(r, k)}
+        profile.save(PROFILE)
+        st.toast("Saved")
+        st.rerun()
+    st.caption(f"Saved in {PROFILE}. Other sales are counted as financial instruments.")
+
+# ---------------------------------------------------------------- prices
+with tabs[6]:
     st.subheader("Prices")
     st.caption("Fill in your own price where one is missing or wrong. Your prices are saved and win over every other source.")
     rows = []
@@ -374,7 +556,7 @@ with tabs[4]:
                 st.markdown(f"- {e}")
 
 # ---------------------------------------------------------------- data
-with tabs[5]:
+with tabs[7]:
     st.subheader("Rows read from your files")
     tdf = pd.DataFrame([t.as_dict() for t in pf.transactions])
     kinds = sorted(tdf.kind.unique()) if not tdf.empty else []

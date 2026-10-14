@@ -110,12 +110,14 @@ class TaxCalculator:
         self.today = today or pricebook.today
 
     # ---------- sales already made in the tax year ----------
-    def sold_lines(self) -> list[TaxLine]:
+    def sold_lines(self, year: int | None = None) -> list[TaxLine]:
+        """Sales in the tax year (or the given year; only from 2026 on are sales taxed)."""
         out = []
         r = self.rules
+        year = r.year if year is None else year
         hmap = {(h.broker, h.asset): h for h in self.portfolio.holdings()}
         for row in self.portfolio.realized:
-            if row.date.year != r.year:
+            if row.date.year != year or year <= r.reference_date.year:
                 continue
             lt = law_type(row.asset_class)
             if not row.lots:                      # broker-reported currency results and fees

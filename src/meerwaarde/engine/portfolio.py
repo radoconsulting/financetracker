@@ -6,8 +6,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from ..models import (Transaction, Lot, RealizedRow, Holding, IncomeRow, BUY, SELL, REWARD, DEPOSIT, WITHDRAWAL,
-                      CASH_IN, CASH_OUT, DIVIDEND, INTEREST, WITHHOLDING, FX_RESULT, FEE)
+from ..models import (Transaction, Lot, RealizedRow, Holding, IncomeRow, TobRow, BUY, SELL, REWARD, DEPOSIT, WITHDRAWAL,
+                      CASH_IN, CASH_OUT, DIVIDEND, INTEREST, WITHHOLDING, FX_RESULT, FEE, TOB)
 
 EPS = 1e-10
 
@@ -38,6 +38,7 @@ class Portfolio:
         self.realized: list[RealizedRow] = []
         self.income: list[IncomeRow] = []
         self.cash: list[CashFlow] = []
+        self.tob: list[TobRow] = []          # stock exchange tax per trade, for the yearly report only
         self.warnings: list[str] = []
         self.lots: dict[tuple, list[Lot]] = defaultdict(list)
         self.meta: dict[tuple, dict] = {}
@@ -154,7 +155,10 @@ class Portfolio:
             elif t.kind in (CASH_IN, CASH_OUT):
                 self.cash.append(CashFlow(t.broker, t.ts, t.amount_eur if t.amount_eur is not None else t.qty, t.name))
             elif t.kind in (DIVIDEND, INTEREST, WITHHOLDING):
-                self.income.append(IncomeRow(t.broker, t.ts, t.asset, t.name, t.kind, t.amount_eur or 0.0, t.price, t.currency, t.note))
+                self.income.append(IncomeRow(t.broker, t.ts, t.asset, t.name, t.kind, t.amount_eur or 0.0, t.price, t.currency,
+                                             t.note, self._cls(t)))
+            elif t.kind == TOB:
+                self.tob.append(TobRow(t.broker, t.ts, t.asset, t.name, t.qty, t.price, t.amount_eur or 0.0, t.note))
             elif t.kind in (FX_RESULT, FEE):
                 amt = t.amount_eur or 0.0
                 self.realized.append(RealizedRow(t.broker, t.ts, t.asset, t.name, "Cash/FX", 0.0, amt, 0.0, None, [], t.note or t.kind))

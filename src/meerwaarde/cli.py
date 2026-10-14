@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from .engine.portfolio import PortfolioOptions
-from .engine.tax import TaxCalculator, TaxRules
+from .engine.tax import TaxRules
 from .models import LAW_TYPES
 
 
@@ -17,26 +17,42 @@ def _eur(v):
     return "—" if v is None else f"€{v:,.2f}"
 
 
-def cmd_report(a):
+def _check_name(value, ext, flag):
+    if value and not value.lower().endswith(ext):
+        sys.exit(f"{flag} takes the output file name (ending in {ext}), got {value!r}. "
+                 f"Put {flag} after the PDF files, or give it a name: {flag} results{ext}")
+
+
+def _build(a):
+    from .profile import TaxProfile
     from .report import build_report
     files = [Path(f) for f in a.files]
-    if a.xlsx and not a.xlsx.lower().endswith(".xlsx"):
-        sys.exit(f"--xlsx takes the workbook's file name (ending in .xlsx), got {a.xlsx!r}. "
-                 "Put --xlsx after the PDF files, or give it a name: --xlsx results.xlsx")
     missing = [str(f) for f in files if not f.exists()]
     if missing:
         sys.exit(f"File not found: {', '.join(missing)}")
-    rules = TaxRules(year=a.year, exemption=a.exemption, use_original_if_higher=not a.no_original_price)
+    profile = TaxProfile.load(a.profile) if a.profile else TaxProfile()
+    rules = TaxRules(year=a.year, use_original_if_higher=not a.no_original_price)
+    rules.exemption = a.exemption if a.exemption is not None else profile.exemption_rules().base_for(a.year)
     opts = PortfolioOptions(own_wallet_withdrawals=not a.withdrawals_are_sales)
     overrides = Path(a.prices).read_text() if a.prices else None
-    rep = build_report(files, fetch_prices=not a.offline, options=opts, rules=rules, overrides_csv=overrides,
-                       today=date.fromisoformat(a.today) if a.today else None)
+    return build_report(files, fetch_prices=not a.offline, options=opts, rules=rules, overrides_csv=overrides,
+                        today=date.fromisoformat(a.today) if a.today else None, profile=profile)
+
+
+def _out_path(value, out, default):
+    return Path(value) if value else Path(out or ".") / default
+
+
+def cmd_report(a):
+    _check_name(a.xlsx, ".xlsx", "--xlsx")
+    rep = _build(a)
+    rules = rep.tax.rules
 
     s = rep.summary()
     print("\nProfit per broker (EUR)")
     print(s.to_string(index=False))
-    lines = rep.tax.sold_lines() + rep.tax.open_lines()
-    t = TaxCalculator.summarize(lines, rules)
+    lines = rep.sold_lines() + rep.tax.open_lines()
+    t = rep.tax_summary(lines)
     print(f"\nMeerwaardebelasting {rules.year} if you sold everything today")
     for k, v in t["per_type"].items():
         if abs(v["sold"]) + abs(v["open"]) > 0.005:
@@ -44,8 +60,10 @@ def cmd_report(a):
     print(f"  Net taxable gain          {_eur(t['net'])}")
     print(f"  Exemption                 {_eur(t['exemption'])}")
     print(f"  Tax (10%)                 {_eur(t['tax'])}")
-    sold_net = sum(l.taxable_gain for l in rep.tax.sold_lines())
-    print(f"  Tax-free room left after this year's sales: {_eur(max(0.0, rules.exemption - sold_net))}")
+    sold = rep.tax_summary(rep.sold_lines())["people"]
+    for pid, p in sold.items():
+        who = "" if rep.household.single else f" ({rep.household.name(pid)})"
+        print(f"  Tax-free room left after this year's sales{who}: {_eur(max(0.0, p['room']))}")
 
     h = rep.holdings()
     miss = h[h.price_eur.isna()]
@@ -74,8 +92,41 @@ def cmd_report(a):
 
     if a.xlsx is not None:
         from .export import default_name, to_xlsx
-        path = Path(a.xlsx) if a.xlsx else Path(a.out or ".") / default_name(rep)
-        print(f"Excel workbook written to {to_xlsx(rep, path)}")
+        print(f"Excel workbook written to {to_xlsx(rep, _out_path(a.xlsx, a.out, default_name(rep)))}")
+
+
+def cmd_tax_report(a):
+    _check_name(a.xlsx, ".xlsx", "--xlsx")
+    _check_name(a.pdf, ".pdf", "--pdf")
+    from .engine.income_tax import CATEGORIES
+    from .taxreport import tax_year_report
+    rep = _build(a)
+    ytr = tax_year_report(rep, a.year)
+    print(f"\n{ytr.title}\n{ytr.subtitle}")
+    for pid, name in ytr.persons:
+        p, it = ytr.cgt["people"][pid], ytr.income[pid]
+        if len(ytr.persons) > 1:
+            print(f"\n{name}")
+        e = ytr.exemption.get(pid)
+        print(f"  Meerwaardebelasting: net gain {_eur(p['net'])}, exemption {_eur(p['exemption'])}"
+              + (f" (incl. {_eur(e.carried)} carried forward)" if e and e.carried else "") + f", tax {_eur(p['tax'])}")
+        for l in it.lines:
+            print(f"  {CATEGORIES[l.category]:<34} {l.broker:<8} net {_eur(l.net):>12}  (foreign tax {_eur(l.foreign_tax)})")
+        print(f"  Dividend exemption used {_eur(it.exemption_used)}, taxable {_eur(it.taxable)}, tax (30%) {_eur(it.tax)}")
+    print("\nStock exchange tax")
+    for r in ytr.tob.itertuples():
+        print(f"  {r.broker:<8} {_eur(r.amount_eur):>12}  {r.basis}")
+    print("\nChecklist")
+    for i, c in enumerate(ytr.checklist, 1):
+        print(f"  {i}. {c}")
+    for n in ytr.notes:
+        print(f"  Note: {n}")
+    if a.xlsx is not None or a.pdf is None:
+        from .export import tax_report_xlsx
+        print(f"\nExcel written to {tax_report_xlsx(ytr, _out_path(a.xlsx, a.out, f'tax-report-{ytr.year}.xlsx'))}")
+    if a.pdf is not None or a.xlsx is None:
+        from .pdf_report import tax_report_pdf
+        print(f"PDF written to {tax_report_pdf(ytr, _out_path(a.pdf, a.out, f'tax-report-{ytr.year}.pdf'))}")
 
 
 def cmd_app(a):
@@ -98,20 +149,32 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="meerwaarde", description="Profit/loss and Belgian meerwaardebelasting from Bitvavo, DEGIRO and LYNX exports.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    def common(x):
+        x.add_argument("files", nargs="+", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
+        x.add_argument("--profile", help="tax profile JSON: partner, ownership, other sales and income, exemptions per year "
+                                         "(the app keeps it in its data folder as profile.json)")
+        x.add_argument("--prices", help="CSV with your own prices: asset,price_now,price_31dec (EUR)")
+        x.add_argument("--offline", action="store_true", help="don't look up prices online")
+        x.add_argument("--year", type=int, default=2026, help="tax year (default 2026)")
+        x.add_argument("--exemption", type=float, help="own exemption of the tax year in EUR (default: 10000 for 2026, or the profile's)")
+        x.add_argument("--no-original-price", action="store_true", help="never use the original purchase price instead of the 31-12-2025 price")
+        x.add_argument("--withdrawals-are-sales", action="store_true", help="treat crypto withdrawals as leaving the portfolio instead of going to your own wallet")
+        x.add_argument("--today", help="value date for prices (YYYY-MM-DD), mainly for testing")
+        x.add_argument("--out", help="output folder")
+
     r = sub.add_parser("report", help="Read exports and print profit and tax; optionally write CSV files or an Excel workbook")
-    r.add_argument("files", nargs="+", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
-    r.add_argument("--out", help="folder for CSV files")
+    common(r)
     r.add_argument("--xlsx", nargs="?", const="", metavar="FILE",
                    help="write an Excel workbook (default name meerwaarde-<date>.xlsx, in --out when given)")
-    r.add_argument("--prices", help="CSV with your own prices: asset,price_now,price_31dec (EUR)")
-    r.add_argument("--offline", action="store_true", help="don't look up prices online")
-    r.add_argument("--year", type=int, default=2026, help="tax year (default 2026)")
-    r.add_argument("--exemption", type=float, default=10000.0, help="exemption in EUR (default 10000)")
-    r.add_argument("--no-original-price", action="store_true", help="never use the original purchase price instead of the 31-12-2025 price")
-    r.add_argument("--withdrawals-are-sales", action="store_true", help="treat crypto withdrawals as leaving the portfolio instead of going to your own wallet")
-    r.add_argument("--today", help="value date for prices (YYYY-MM-DD), mainly for testing")
     r.add_argument("-v", "--verbose", action="store_true", help="show all notes about the data")
     r.set_defaults(func=cmd_report)
+
+    t = sub.add_parser("tax-report", help="Yearly tax report (meerwaardebelasting, dividends and interest, stock exchange "
+                                          "tax, checklist) as Excel and PDF")
+    common(t)
+    t.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="write only the Excel version (default tax-report-<year>.xlsx)")
+    t.add_argument("--pdf", nargs="?", const="", metavar="FILE", help="write only the PDF version (default tax-report-<year>.pdf)")
+    t.set_defaults(func=cmd_tax_report)
 
     w = sub.add_parser("app", help="Start the web app")
     w.add_argument("--port", type=int, default=8501)
