@@ -118,3 +118,18 @@ def test_json_round_trip(tmp_path):
 def test_asset_code_from_name():
     assert asset_code("Tak 23 Pensioen") == "TAK-23-PENSIOEN"
     assert asset_code("€€") == "MANUAL"
+
+
+def test_excel_has_a_manual_positions_sheet_with_a_cash_formula():
+    import io
+    from openpyxl import load_workbook
+    from meerwaarde.export import SHEETS, to_xlsx
+    p = fund(trades=[ManualTrade(date(2021, 3, 1), 10, 100.0, 2.5), ManualTrade(date(2026, 5, 4), -4, 125.0, 1.0)])
+    wb = load_workbook(io.BytesIO(to_xlsx(report(book(p)))))
+    assert "Manual positions" in SHEETS
+    ws = wb["Manual positions"]
+    head = [c.value for c in ws[1]]
+    col = head.index("Cash effect after costs (€)") + 1
+    assert ws.max_row == 3
+    assert ws.cell(2, col).value.startswith("=IF(")
+    assert ws.cell(2, head.index("Quantity (− = sold)") + 1).value == 10

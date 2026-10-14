@@ -119,3 +119,16 @@ on 404) with Google Search grounding and asks for a JSON array; the answer is pa
 ISINs, index, TER and policy of the positions to replace are sent. ISINs are checked (check digit); catalog facts
 win; an unknown Belgian registration means 1.32% is assumed. The key comes from the field or `GEMINI_API_KEY` and is
 not stored. Verified against the live endpoint only up to key validation (no key here).
+
+### D24 · Manual positions are ordinary transactions under their own "broker" (2026-10-14)
+`manual.py` turns each entry into BUY/SELL `Transaction`s (source "manual entry", `ref` = the entry's id), added after
+`combine()` so they are never deduplicated against exports. So FIFO, profit, `unit_acquisition`, ownership shares (per
+broker label, e.g. the bank or insurer), the simulator and the exports need no special case. Prices are per unit in
+EUR before costs; a policy without units is quantity 1. The current price and the 31-12-2025 value entered with a
+position sit between an override and the statement/online sources (`PriceBook.set_manual`), so an ISIN entered by hand
+still gets an online price when no price is entered. A missing 31-12-2025 value is flagged ("31-12-2025 price"),
+never guessed. Invalid entries (no asset, no purchase, selling more than held) are left out with a warning. Year-end
+harvesting skips class `Insurance`: a policy can't be sold and bought back at market cost (entry fees, new contract);
+losses on one are still flagged. Not handled: tak 21 roerende voorheffing on early surrender (docs/domain).
+Stored in `<data dir>/manual.json` (git-ignored, like `profile.json`). Regression unchanged (no manual positions in it).
+

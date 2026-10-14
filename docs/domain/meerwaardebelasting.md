@@ -81,6 +81,11 @@ couldn't be read automatically; read it by hand.
   later purchase value for the meerwaardebelasting is probably the value at receipt, but not confirmed. The app
   counts them at zero cost (conservative, small amounts).
 - **Currency**: gains on foreign cash (LYNX USD) are in scope as "currency". Included as a position.
+- **Manual positions** (backlog item 8, `manual.py`, D24): funds, insurance contracts, savings and gold entered by
+  hand go through the same FIFO and `unit_acquisition`. Open point: for **tak 21** policies (and tak 23 with a
+  guaranteed part) held less than 8 years, the return is already subject to 30% roerende voorheffing on surrender;
+  how that interacts with the 10% (whether the part already taxed is excluded) wasn't checked. The app counts the full
+  gain; check with an adviser before relying on it. Savings in euro give no gain (currency = EUR, price 1).
 - **Bond funds**: Reynders tax (30% on the bond part, TIS) applies on top; the 10% applies to the rest of the
   gain. Not implemented (backlog item 9).
 

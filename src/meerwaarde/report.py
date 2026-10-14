@@ -69,6 +69,7 @@ class Report:
     tax: TaxCalculator
     warnings: list = field(default_factory=list)
     profile: TaxProfile = field(default_factory=TaxProfile)
+    manual: ManualBook = field(default_factory=ManualBook)
 
     def __post_init__(self):
         self._sold: dict[int, list] = {}
@@ -106,6 +107,20 @@ class Report:
     def cash(self) -> pd.DataFrame:
         rows = [dict(broker=c.broker, date=c.date.date(), amount_eur=c.amount_eur, note=c.note) for c in self.portfolio.cash]
         return pd.DataFrame(rows, columns=["broker", "date", "amount_eur", "note"])
+
+    def manual_table(self) -> pd.DataFrame:
+        """Every trade of the manual positions, as entered (left-out entries say why)."""
+        rows = []
+        for p in self.manual.positions:
+            problem = "; ".join(p.problems())
+            for t in sorted(p.trades, key=lambda t: t.date) or [None]:
+                rows.append(dict(broker=p.broker, asset=p.asset, name=p.name, asset_class=p.asset_class,
+                                 type=LAW_TYPES[law_type(p.asset_class)][0], date=t.date if t else None,
+                                 qty=t.qty if t else None, price_eur=t.price if t else None, costs_eur=t.costs if t else None,
+                                 price_now_eur=p.price_now, price_now_date=p.price_now_date, price_31dec_eur=p.price_31dec,
+                                 note=f"Left out: {problem}" if problem else p.note))
+        return pd.DataFrame(rows, columns=["broker", "asset", "name", "asset_class", "type", "date", "qty", "price_eur",
+                                           "costs_eur", "price_now_eur", "price_now_date", "price_31dec_eur", "note"])
 
     def summary(self) -> pd.DataFrame:
         r, h, i = self.realized(), self.holdings(), self.income()
@@ -318,4 +333,4 @@ def build_report(files, fetch_prices: bool = True, cache_dir=None, options: Port
     if overrides_csv:
         pb.load_overrides_csv(overrides_csv)
     calc = TaxCalculator(pf, pb, rules, today=today)
-    return Report(pf, pb, calc, warnings + pf.warnings, profile)
+    return Report(pf, pb, calc, warnings + pf.warnings, profile, manual)

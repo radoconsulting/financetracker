@@ -5,8 +5,10 @@
 ## Order of preference
 
 1. User override (`prices.csv`: `asset,price_now,price_31dec`; the app's Prices tab writes it)
-2. Broker statement (LYNX open-position closes; Mark-to-Market prior prices for 31-12-2025)
-3. Online (`prices/fetch.py`), newest date wins between statement and online
+2. Price entered with a manual position (`manual.json`, `PriceBook.set_manual`; date as entered, else today; the
+   31-12-2025 value dated 31-12-2025), source "Your entry (manual position)" (D24)
+3. Broker statement (LYNX open-position closes; Mark-to-Market prior prices for 31-12-2025)
+4. Online (`prices/fetch.py`), newest date wins between statement and online
 
 ## Sources
 

@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Prices", "How calculated")
+          "Year-end", "Switch", "Manual positions", "Prices", "How calculated")
 
 
 @dataclass
@@ -181,6 +181,16 @@ PRICES = [
     Col("price_now", "Price now (€)", PRICE, 13), Col("now_date", "Date", DATE, 11), Col("now_source", "Source", width=24),
     Col("price_ref", "Price 31-12-2025 (€)", PRICE, 13), Col("ref_date", "Date", DATE, 11),
     Col("ref_source", "Source", width=24),
+]
+
+MANUAL = [
+    Col("broker", "Broker", width=10), Col("asset", "Asset", width=15), Col("name", "Name", width=36),
+    Col("asset_class", "Class", width=10), Col("type", "Type (as the law defines it)", width=20),
+    Col("date", "Date", DATE, 11), Col("qty", "Quantity (− = sold)", QTY, 12), Col("price_eur", "Price (€)", PRICE, 13),
+    Col("costs_eur", "Costs (€)", EUR, 12),
+    Col("cash_eur", "Cash effect after costs (€)", EUR, 16, '=IF({qty}{r}="","",-{qty}{r}*{price_eur}{r}-{costs_eur}{r})'),
+    Col("price_now_eur", "Price now (€)", PRICE, 13), Col("price_now_date", "Price date", DATE, 11),
+    Col("price_31dec_eur", "Value 31-12-2025 (€)", PRICE, 13), Col("note", "Note", width=40),
 ]
 
 
@@ -692,6 +702,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     if not tax.empty:
         tax = tax.sort_values(["status", "taxable_gain_eur"], ascending=[False, False])
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
+    _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
     _table(sheets["Prices"], PRICES, _price_rows(rep))
     _exemption_sheet(sheets["Exemption"], rep)
     _income_tax_sheet(sheets["Income tax"], rep)

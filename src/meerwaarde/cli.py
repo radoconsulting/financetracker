@@ -24,19 +24,23 @@ def _check_name(value, ext, flag):
 
 
 def _build(a):
+    from .manual import ManualBook
     from .profile import TaxProfile
     from .report import build_report
     files = [Path(f) for f in a.files]
-    missing = [str(f) for f in files if not f.exists()]
+    missing = [str(f) for f in files + ([Path(a.manual)] if a.manual else []) if not f.exists()]
     if missing:
         sys.exit(f"File not found: {', '.join(missing)}")
+    if not files and not a.manual:
+        sys.exit("Give at least one PDF export or a --manual file")
     profile = TaxProfile.load(a.profile) if a.profile else TaxProfile()
     rules = TaxRules(year=a.year, use_original_if_higher=not a.no_original_price)
     rules.exemption = a.exemption if a.exemption is not None else profile.exemption_rules().base_for(a.year)
     opts = PortfolioOptions(own_wallet_withdrawals=not a.withdrawals_are_sales)
     overrides = Path(a.prices).read_text() if a.prices else None
     return build_report(files, fetch_prices=not a.offline, options=opts, rules=rules, overrides_csv=overrides,
-                        today=date.fromisoformat(a.today) if a.today else None, profile=profile)
+                        today=date.fromisoformat(a.today) if a.today else None, profile=profile,
+                        manual=ManualBook.load(a.manual) if a.manual else None)
 
 
 def _out_path(value, out, default):
@@ -227,9 +231,11 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(x):
-        x.add_argument("files", nargs="+", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
+        x.add_argument("files", nargs="*", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
         x.add_argument("--profile", help="tax profile JSON: partner, ownership, other sales and income, exemptions per year "
                                          "(the app keeps it in its data folder as profile.json)")
+        x.add_argument("--manual", help="JSON with positions no export covers: funds, tak 21/23 policies, savings, gold "
+                                        "(the app keeps it in its data folder as manual.json)")
         x.add_argument("--prices", help="CSV with your own prices: asset,price_now,price_31dec (EUR)")
         x.add_argument("--offline", action="store_true", help="don't look up prices online")
         x.add_argument("--year", type=int, default=2026, help="tax year (default 2026)")

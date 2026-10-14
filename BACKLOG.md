@@ -5,13 +5,9 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–7 are done. Next in line: 8.
+Nothing open: items 1–8 are done. Next in line: 9.
 
 ## Next
-
-### 8. Manual positions · S
-Add positions no export covers: funds, tak 21/23 policies, savings, investment gold. Purchase date, quantity,
-price, and a 31-12-2025 value; they count in profit and in the meerwaardebelasting under the right asset type.
 
 ### 9. Reynders tax · M
 For bond funds and bond ETFs (more than 10% in bonds), estimate the 30% on the interest part when selling.
@@ -22,10 +18,6 @@ it, then taken into account in the simulator and the switch planner.
 Refresh prices on a schedule (daily, on the NAS) and notify when something changes that matters: tax-free room
 drops below a threshold, a position moves by more than a set percentage, or a price couldn't be found.
 Notification by e-mail or a push service such as ntfy.
-
-### 11. Login + encrypted data · M
-For running on the NAS: a login in front of the app, and uploads, prices and history stored encrypted at rest,
-with the key outside the data folder. Document running it behind the NAS reverse proxy with HTTPS.
 
 ## Later
 
@@ -45,6 +37,14 @@ and the same deposits invested in a benchmark such as MSCI ACWI for comparison.
 Exposure by region, sector, currency and asset class, looking through ETFs to their holdings, plus the overlap
 between ETFs (for example S&P 500 inside MSCI World inside ACWI).
 
+## Skipped for now
+
+Sander asked on 2026-10-14 to skip this one for now; pick it up only when he asks.
+
+### 11. Login + encrypted data · M
+For running on the NAS: a login in front of the app, and uploads, prices and history stored encrypted at rest,
+with the key outside the data folder. Document running it behind the NAS reverse proxy with HTTPS.
+
 ## Done
 
 - 1. DEGIRO account statement · done 2026-10-14 · Rekeningoverzicht PDF: dividends, withholding, stock exchange tax (added to trade costs), interest, fees, deposits, bond payout; cash reconciles within a few euros (D18–D20).
@@ -54,3 +54,4 @@ between ETFs (for example S&P 500 inside MSCI World inside ACWI).
 - 5. Yearly tax report · done 2026-10-14 · Tax report tab, `meerwaarde tax-report`, Excel and PDF, checklist with foreign accounts; DEGIRO stock exchange tax is an estimate until item 1.
 - 6. Year-end gain harvesting · done 2026-10-14 · Year-end tab, `meerwaarde harvest`, Excel sheet; real stock exchange tax rates, keeps the €1,000 carry-forward by default, loss flags, anti-abuse note (D21).
 - 7. Switch planner · done 2026-10-14 · Switch tab, `meerwaarde switch`, Excel sheet; real stock exchange tax rates, conservative yearly effect, spread plan over years; optional Gemini suggestions with your own key (D22, D23).
+- 8. Manual positions · done 2026-10-14 · Manual positions tab and `--manual` JSON: funds, tak 21/23, savings, gold as ordinary FIFO transactions under their own broker label; price now and 31-12-2025 value per position; Excel sheet; year-end harvesting skips insurance (D24). Tak 21 roerende voorheffing on early surrender not handled.

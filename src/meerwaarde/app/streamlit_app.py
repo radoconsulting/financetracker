@@ -21,7 +21,8 @@ from meerwaarde.engine.switch import (compare, default_sources, funds_from_json,
 from meerwaarde.funds import CATALOG, WORLD_TARGETS, Fund, lookup
 from meerwaarde import suggest as gemini
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
-from meerwaarde.models import LAW_TYPES, law_type
+from meerwaarde.manual import ManualBook, ManualPosition, ManualTrade, asset_code
+from meerwaarde.models import ASSET_CLASSES, LAW_TYPES, law_type
 from meerwaarde.parsers import combine, parse_file
 from meerwaarde.pdf_report import tax_report_pdf
 from meerwaarde.prices import PriceBook
@@ -37,6 +38,7 @@ UPLOADS = DATA / "uploads"
 PRICES_CSV = DATA / "prices.csv"
 PROFILE = DATA / "profile.json"
 FUNDS_JSON = DATA / "funds.json"
+MANUAL_JSON = DATA / "manual.json"
 CACHE = DATA / "cache"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
@@ -129,8 +131,84 @@ with st.sidebar:
         st.toast("Current prices will be fetched again")
 
 
+# ---------------------------------------------------------------- manual positions
+MANUAL_COLS = ["broker", "asset", "name", "asset_class", "date", "qty", "price", "costs", "price_now", "price_now_date",
+               "price_31dec", "note"]
+
+
+def manual_frame(book: ManualBook) -> pd.DataFrame:
+    rows = [dict(broker=p.broker, asset=p.asset, name=p.name, asset_class=p.asset_class, date=t.date, qty=t.qty,
+                 price=t.price, costs=t.costs, price_now=p.price_now, price_now_date=p.price_now_date,
+                 price_31dec=p.price_31dec, note=p.note) for p in book.positions for t in sorted(p.trades, key=lambda t: t.date)]
+    df = pd.DataFrame(rows, columns=MANUAL_COLS)
+    for c in ("date", "price_now_date"):
+        df[c] = pd.to_datetime(df[c]).dt.date
+    return df
+
+
+def manual_from_frame(df: pd.DataFrame, old: ManualBook) -> ManualBook:
+    """Rows with the same broker and asset are one position; position fields come from its first row that has them."""
+    ids = {(p.broker, p.asset): p.id for p in old.positions}
+    book = ManualBook()
+    df = df.dropna(how="all")
+    for r in df.itertuples():
+        name = "" if pd.isna(r.name) else str(r.name).strip()
+        asset = "" if pd.isna(r.asset) else str(r.asset).strip().upper()
+        asset = asset or asset_code(name)
+        broker = "" if pd.isna(r.broker) else str(r.broker).strip()
+        broker = broker or "Manual"
+        num = lambda v: None if pd.isna(v) else float(v)  # noqa: E731
+        pos = next((p for p in book.positions if (p.broker, p.asset) == (broker, asset)), None)
+        if pos is None:
+            pos = ManualPosition(asset, name, r.asset_class if r.asset_class in ASSET_CLASSES else "Fund", broker,
+                                 id=ids.get((broker, asset)) or book.new_id())
+            book.positions.append(pos)
+        pos.name = pos.name or name
+        for k in ("price_now", "price_31dec"):
+            if getattr(pos, k) is None:
+                setattr(pos, k, num(getattr(r, k)))
+        if pos.price_now_date is None and not pd.isna(r.price_now_date):
+            pos.price_now_date = pd.Timestamp(r.price_now_date).date()
+        pos.note = pos.note or ("" if pd.isna(r.note) else str(r.note))
+        if not pd.isna(r.date) and num(r.qty):
+            pos.trades.append(ManualTrade(pd.Timestamp(r.date).date(), num(r.qty), num(r.price), num(r.costs) or 0.0))
+    return book
+
+
+def manual_editor(book: ManualBook, key: str):
+    st.caption("Funds at a bank, tak 21/23 policies, savings or investment gold that no export covers. One row per purchase "
+               "or sale (negative quantity); rows with the same broker and asset form one position. Prices per unit in EUR "
+               "before costs; a policy or account without units: quantity 1 and its value as the price. The 31-12-2025 "
+               "value is needed for units you held on that date. Savings in euro never give a gain (class Cash/FX, asset "
+               "EUR, price 1).")
+    ed = st.data_editor(manual_frame(book), num_rows="dynamic", hide_index=True, width="stretch", key=key, column_config={
+        "broker": st.column_config.TextColumn("Bank / insurer", help="Ownership shares per broker (Tax years tab) apply"),
+        "asset": st.column_config.TextColumn("ISIN or code", help="Empty: a code is made from the name"),
+        "name": "Name",
+        "asset_class": st.column_config.SelectboxColumn("Class", options=list(ASSET_CLASSES), default="Fund",
+                                                        help="Insurance = tak 21/23/26, Gold = investment gold"),
+        "date": st.column_config.DateColumn("Date"),
+        "qty": st.column_config.NumberColumn("Quantity (− = sold)", format="%.6g"),
+        "price": st.column_config.NumberColumn("Price (€)", format="%.6g"),
+        "costs": st.column_config.NumberColumn("Costs (€)", format="%.2f", help="Entry fee, commission: profit only, not the tax"),
+        "price_now": st.column_config.NumberColumn("Price now (€)", format="%.6g"),
+        "price_now_date": st.column_config.DateColumn("Price date"),
+        "price_31dec": st.column_config.NumberColumn("Value 31-12-2025 (€)", format="%.6g"),
+        "note": "Note"})
+    if st.button("Save manual positions", key=f"{key}-save"):
+        new = manual_from_frame(ed, book)
+        new.save(MANUAL_JSON)
+        for w in new.warnings():
+            st.warning(w)
+        st.toast("Manual positions saved")
+        st.rerun()
+    st.caption(f"Saved in {MANUAL_JSON}.")
+
+
+manual = ManualBook.load(MANUAL_JSON)
+
 # ---------------------------------------------------------------- empty state
-if not parsed:
+if not parsed and not manual.positions:
     st.header("Add your exports to start")
     st.markdown(
         """
@@ -145,21 +223,26 @@ Upload the PDF exports in the sidebar. They are kept on this computer, in `"""
 
 After that, the app shows your profit per broker, the meerwaardebelasting if you sold everything today,
 and a simulator for how much you can sell before going over the yearly exemption.
+
+Positions no export covers (a fund at your bank, a tak 23 policy, investment gold) can be added below.
 """
     )
+    with st.expander("Add manual positions"):
+        manual_editor(manual, "manual-empty")
     st.stop()
 
 # ---------------------------------------------------------------- build
 results = [r for _, r in parsed]
 txns, statements, parse_warnings = combine(results)
 opts = PortfolioOptions(own_wallet_withdrawals=own_wallet, detect_conversions=conversions)
-pf = Portfolio(txns, statements, opts)
+pf = Portfolio(txns + manual.transactions(), statements, opts)
 rules = TaxRules(year=int(year), exemption=float(exemption), use_original_if_higher=original)
 pb = PriceBook(statements, fetch=fetch, cache_dir=CACHE, reference_date=rules.reference_date)
+manual.apply_prices(pb)
 if PRICES_CSV.exists():
     pb.load_overrides_csv(PRICES_CSV.read_text())
 calc = TaxCalculator(pf, pb, rules)
-rep = Report(pf, pb, calc, parse_warnings + pf.warnings, profile)
+rep = Report(pf, pb, calc, parse_warnings + manual.warnings() + pf.warnings, profile, manual)
 hh = profile.household
 
 with st.spinner("Looking up prices…"):
@@ -173,7 +256,7 @@ def money(v):
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data"])
+                "Tax years", "Prices", "Data", "Manual positions"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -761,6 +844,13 @@ with tabs[9]:
         st.dataframe(pd.DataFrame([dict(file=s.source, start=s.period_start, end=s.period_end, positions=len(s.positions),
                                         dividends=s.nav.get("Dividends"), ending_value=s.nav.get("Ending Value")) for s in statements]),
                      hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------- manual positions
+with tabs[10]:
+    st.subheader("Manual positions")
+    manual_editor(manual, "manual-editor")
+    if manual.positions:
+        st.dataframe(rep.manual_table(), hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:

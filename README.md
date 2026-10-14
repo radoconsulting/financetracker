@@ -35,6 +35,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   that spreads the sales over the years within the exemption. Optionally, with your own **Gemini API key**, it
   suggests cheaper funds with similar content (names and ISINs only are sent; suggestions are marked unverified).
   Command line: `meerwaarde switch *.pdf [--suggest]`.
+- **Manual positions**: funds at a bank, tak 21/23 policies, savings and investment gold that no export covers.
+  Enter purchases and sales, a current price and the 31-12-2025 value on the **Manual positions** tab (or in a JSON
+  file for `--manual`); they count in profit and in the meerwaardebelasting under the right asset type.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 
@@ -68,8 +71,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 For every position the app shows the price, its date and its source. In order of preference:
 
 1. **Your own price** (Prices tab, or a CSV with `asset,price_now,price_31dec`)
-2. **Broker statements** (LYNX closing prices and 31-12-2025 prices)
-3. **Online**: Bitvavo for crypto (current price, and the price at midnight on 31-12-2025), justETF for ETFs,
+2. **The price entered with a manual position** (with the date you give it)
+3. **Broker statements** (LYNX closing prices and 31-12-2025 prices)
+4. **Online**: Bitvavo for crypto (current price, and the price at midnight on 31-12-2025), justETF for ETFs,
    Yahoo Finance for shares (unofficial), the ECB for exchange rates
 
 Online prices are cached in `<data folder>/cache` (current prices for 6 hours). Use **Refresh prices** in
@@ -94,7 +98,8 @@ meerwaarde report Volledige_geschiedenis.pdf Transactions.pdf LYNX_2023.pdf LYNX
 ```
 
 Options: `--xlsx [FILE]` for the Excel workbook (default `meerwaarde-<date>.xlsx`, in the `--out` folder when
-given), `--prices my_prices.csv`, `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
+given), `--prices my_prices.csv`, `--manual manual.json` (positions no export covers; the app's `manual.json`, format
+in `src/meerwaarde/manual.py`; it can be used without any PDF), `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
 `--withdrawals-are-sales`, `-v` for all notes.
 
 ### Yearly tax report
