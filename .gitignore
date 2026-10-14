@@ -11,3 +11,7 @@ results/
 private/
 CLAUDE.local.md
 .claude/settings.local.json
+.venv/
+# personal: manual positions and the tax profile, wherever they are saved
+manual.json
+profile.json
