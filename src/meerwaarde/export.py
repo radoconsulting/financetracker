@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Prices", "How calculated")
+          "Year-end", "Switch", "Prices", "How calculated")
 
 
 @dataclass
@@ -442,6 +442,74 @@ def _harvest_sheet(ws, plan) -> None:
         row += 1
 
 
+# ---------------------------------------------------------------- switch planner
+SWITCH = [
+    Col("fund", "Target", width=40), Col("isin", "ISIN", width=14), Col("tob", "Stock exchange tax", "0.00%", 11),
+    Col("tob_from", "Rate from", width=28), Col("ter", "TER", "0.00%", 8),
+    Col("cgt", "Meerwaardebelasting now (€)", EUR, 15), Col("costs", "Trading costs now (€)", EUR, 14),
+    Col("now", "Cost if all now (€)", EUR, 14, "={cgt}{r}+{costs}{r}"),
+    Col("div", "Dividend tax saved / yr (€)", EUR, 14), Col("back", "Back later as meerwaardebelasting / yr (€)", EUR, 16),
+    Col("ter_saved", "Running cost saved / yr (€)", EUR, 14),
+    Col("yearly", "Yearly effect (€)", EUR, 13, "={div}{r}-{back}{r}+{ter_saved}{r}"),
+    Col("exit", "Extra stock exchange tax when sold later (€)", EUR, 16),
+    Col("be", "Break-even (years)", "0.0", 11, '=IF({yearly}{r}>0,{now}{r}/{yearly}{r},"never")'),
+    Col("net", "Net over the horizon, all now (€)", EUR, 16, "={yearly}{r}*$B$3-{now}{r}-{exit}{r}"),
+    Col("net_spread", "Net over the horizon, spread (€)", EUR, 16), Col("checked", "Facts checked", width=9),
+]
+
+
+def _switch_sheet(ws, rep: Report, switch) -> None:
+    from .engine.switch import compare, default_sources, net_spread, sources_for, spread_plan
+    from .funds import CATALOG, WORLD_TARGETS
+    if switch is None:
+        srcs = sources_for(rep, default_sources(rep))
+        cases = compare(rep, srcs, [CATALOG[i] for i in WORLD_TARGETS]) if srcs else []
+        plans = {c.target.isin: spread_plan(rep, srcs, c) for c in cases}
+        horizon = 10
+    else:
+        srcs, cases, plans, horizon = switch
+    _write(ws, 1, 1, "Switch planner", TITLE)
+    if not srcs or not cases:
+        _write(ws, 2, 1, "Nothing to compare: no distributing ETFs held (pick positions in the app's Switch tab).", NOTE)
+        return
+    _write(ws, 2, 1, "Sell: " + ", ".join(f"{s.qty:g} {s.name} ({s.broker})" for s in srcs)
+           + f" · value €{sum(s.value for s in srcs):,.2f} · dividends last 12 months €{sum(s.dividends_year for s in srcs):,.2f}",
+           NOTE)
+    _write(ws, 3, 1, "Horizon (years)", BOLD)
+    _write(ws, 3, 2, horizon, INPUT, "0", INPUT_FILL)
+    cases = sorted(cases, key=lambda c: net_spread(c, plans[c.target.isin]), reverse=True)
+    rows = [dict(fund=f"{c.target.ticker} {c.target.name}".strip(), isin=c.target.isin, tob=c.target_tob,
+                 tob_from=c.target_tob_source, ter=c.target.ter, cgt=round(c.cgt_now, 2), costs=round(c.costs, 2),
+                 div=round(c.dividend_tax_saved, 2), back=round(c.dividend_tax_back, 2), ter_saved=round(c.ter_saved, 2),
+                 exit=round(c.exit_tob_extra, 2), net_spread=round(net_spread(c, plans[c.target.isin]), 2),
+                 checked="yes" if c.target.verified else "no") for c in cases]
+    _table(ws, SWITCH, rows, top=5, freeze=False)
+    best = cases[0]
+    plan = plans[best.target.isin]
+    row = 5 + len(rows) + 3
+    _write(ws, row - 1, 1, f"Spread within the exemption, into {best.target.ticker or best.target.isin} "
+                           "(today's prices; full exemption for this switch in later years)", SECTION)
+    _header(ws, row, ["Year", "Sell (and buy the target)", "Value (€)", "Taxable gain (€)", "Costs (€)"])
+    for st in plan.steps:
+        row += 1
+        _write(ws, row, 1, st.year, fmt=YEAR)
+        _write(ws, row, 2, ", ".join(f"{q:g} × {k[0]} {k[1]}" for k, q in st.units.items()))
+        _write(ws, row, 3, round(st.value, 2), fmt=EUR)
+        _write(ws, row, 4, round(st.gain, 2), fmt=EUR)
+        _write(ws, row, 5, round(st.costs, 2), fmt=EUR)
+    row += 2
+    for label, v in (("Meerwaardebelasting avoided (vs all now)", best.cgt_now),
+                     ("Yearly benefit you wait for", plan.benefit_waited), ("Trading costs of the plan", plan.costs)):
+        _write(ws, row, 1, label)
+        _write(ws, row, 2, round(v, 2), fmt=EUR)
+        row += 1
+    row += 1
+    for n in best.notes + ["Moving from an S&P 500 fund to a world fund changes what you own; that's a choice, not a cost.",
+                           "Unchecked funds (suggested by Gemini) must be verified before buying."]:
+        _write(ws, row, 1, "• " + n, NOTE)
+        row += 1
+
+
 # ---------------------------------------------------------------- simulator
 def _simulator(ws, rep: Report, sim: Simulation, R: dict, refs: dict):
     t = R["Meerwaardebelasting"]
@@ -543,6 +611,8 @@ def _explain(ws, rep: Report, sim: Simulation):
         "can still sell without tax.",
         "Year-end: lots to sell and buy back before 31 December to use the rest of the exemption, with the tax saved "
         "later against the costs now, and positions at a taxable loss.",
+        "Switch: selling positions for a target fund: cost now, yearly effect, break-even, and a plan spread over "
+        "the years within the exemption.",
         "Prices: current and 31-12-2025 prices with their date and source.",
     ]:
         line("• " + text)
@@ -600,7 +670,7 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 
 # ---------------------------------------------------------------- workbook
-def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None) -> Workbook:
+def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None) -> Workbook:
     from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
     plan = harvest if harvest is not None else plan_harvest(rep)
@@ -629,6 +699,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     refs = _summary(ws_sum, rep, R)
     _simulator(sheets["Simulator"], rep, sim, R, refs)
     _harvest_sheet(sheets["Year-end"], plan)
+    _switch_sheet(sheets["Switch"], rep, switch)
     _explain(sheets["How calculated"], rep, sim)
 
     for ws in wb.worksheets:
@@ -639,9 +710,11 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     return wb
 
 
-def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None):
-    """Write the workbook to `target` and return its path, or return the bytes when no target is given."""
-    wb = build_workbook(rep, simulation, harvest)
+def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None,
+            switch=None):
+    """Write the workbook to `target` and return its path, or return the bytes when no target is given.
+    `switch`: (sources, cases, plans, horizon) from the switch planner; default: distributing ETFs into world ETFs."""
+    wb = build_workbook(rep, simulation, harvest, switch)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)

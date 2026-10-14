@@ -29,6 +29,12 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   with the tax saved later against the costs now (stock exchange tax at the rate your broker charged before,
   commissions, spread), and which positions at a loss could offset gains when tax is due. One click puts the
   proposal in the simulator. Command line: `meerwaarde harvest *.pdf`.
+- **Switch planner**: sell positions (by default your distributing ETFs) for a target fund and compare targets on
+  the cost now (meerwaardebelasting, stock exchange tax at the rate your broker really charged, commissions, spread),
+  the yearly effect (dividend tax no longer paid, running costs), break-even and the net over a horizon, plus a plan
+  that spreads the sales over the years within the exemption. Optionally, with your own **Gemini API key**, it
+  suggests cheaper funds with similar content (names and ISINs only are sent; suggestions are marked unverified).
+  Command line: `meerwaarde switch *.pdf [--suggest]`.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 

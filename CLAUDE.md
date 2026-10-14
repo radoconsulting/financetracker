@@ -29,6 +29,9 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/portfolio.py` | FIFO lots per (broker, asset); own-wallet transfers; ISIN conversions; bond redemption at par; foreign cash from LYNX statements |
 | `src/meerwaarde/engine/tax.py` | TaxRules, unit_acquisition, gain_for, max_without_tax, TaxCalculator |
 | `src/meerwaarde/engine/household.py` | Household (people, ownership shares), exemption carry-forward schedule, per-person tax |
+| `src/meerwaarde/engine/switch.py` | Switch planner: sources, compare targets, spread plan over years (D22) |
+| `src/meerwaarde/funds.py` | Fund catalog (TER, policy, stock exchange tax; checked 14-10-2026), ISIN check |
+| `src/meerwaarde/suggest.py` | Optional Gemini suggestions (BYO key, REST, grounding; parse + validate) (D23) |
 | `src/meerwaarde/engine/harvest.py` | Year-end harvesting: remaining room per person, cost model, plan, loss flags (D21) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/profile.py` | TaxProfile JSON: partner, ownership, per-year exemption amounts, other sales and income |
@@ -37,8 +40,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/prices/` | PriceBook (override > statement > online) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
-| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Tax report, Tax years, Prices, Data); profile in `<data dir>/profile.json` |
-| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `tax-report`, `app`; `--profile` |
+| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data); `<data dir>/profile.json`, `funds.json` |
+| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `app`; `--profile` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
 | `docs/` | domain knowledge and decisions: read the relevant file before changing behaviour |
@@ -73,7 +76,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 - Every price shown must carry its date and source. A user override always wins.
 - A parser change needs a synthetic test in `tests/test_parsers.py` (text in, transactions out); parsers keep
   a text/lines entry point (`degiro.parse_text`, `lynx.parse_lines`) so tests don't need PDFs.
-- Network failures must never break a report: price lookups return None and record an error.
+- Network failures must never break a report: price lookups return None and record an error; Gemini errors come
+  back in `Suggestion.error`. Never send amounts or quantities to an external AI service (D23).
 - No personal data in the repo outside `private/`: no account numbers, quantities, amounts or lists of
   holdings in code, tests or `docs/` (an instrument name as the example of a format quirk is fine). The repo
   may be pushed to GitHub; `private/` never is.

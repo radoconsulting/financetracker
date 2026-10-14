@@ -60,6 +60,12 @@ def metrics() -> dict:
     plan = plan_harvest(rep)
     out["harvest"] = {"gain": round(plan.gain, 2), "costs": round(plan.costs, 2),
                       "lines": {f"{l.broker}|{l.asset}": round(l.qty, 8) for l in plan.lines}}
+    from meerwaarde.engine.switch import compare, default_sources, net_spread, sources_for, spread_plan
+    from meerwaarde.funds import CATALOG, WORLD_TARGETS
+    srcs = sources_for(rep, default_sources(rep))
+    cases = compare(rep, srcs, [CATALOG[i] for i in WORLD_TARGETS])
+    out["switch"] = {c.target.isin: {"now": round(c.now, 2), "yearly": round(c.yearly, 2),
+                                     "net_spread": round(net_spread(c, spread_plan(rep, srcs, c)), 2)} for c in cases}
     # smoke tests: the exports must work on the real data (their values are checked by the unit tests)
     to_xlsx(rep)
     for y in (2025, 2026):

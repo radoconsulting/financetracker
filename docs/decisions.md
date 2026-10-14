@@ -103,3 +103,19 @@ two commissions, spread), and drops lines whose 10% saving doesn't beat their co
 default because the carry-forward gives the same saving without costs (under the `none_used` rule any gain loses it).
 Commission defaults per broker come from Sander's recent orders and can be changed in the app. Cash/FX is left out.
 Joint positions use min(room_p / share_p), as in the simulator.
+
+### D22 · Switch planner: conservative yearly effect, rates from real trades, spread plan at today's prices (2026-10-14)
+`engine/switch.py`. Yearly effect = 30% dividend tax no longer paid − 10% meerwaardebelasting that may come back on
+the reinvested dividends (setting; assumes later gains above the exemption) + TER difference. Dividends are the last
+12 months per unit held at each payment. Stock exchange tax: the most recent rate the broker charged on that fund
+(VWCE went from 0.12% to 1.32% between 2024 and 2026), else the catalog (`funds.py`), else 1.32% (worst case). The
+extra stock exchange tax when the target is sold later is shown separately. The spread plan sells per year what
+fits in that year's exemption (this year: what's left; later years: the full own amount, no other sales) at today's
+prices, and counts the yearly benefit you wait for. `observed_tob_rate` now uses the latest trade (was the median).
+
+### D23 · Gemini suggestions: optional, your own key, no personal amounts, everything unverified (2026-10-14)
+`suggest.py` calls the generateContent REST endpoint (model `gemini-3.8-flash`, falls back to `gemini-2.5-flash`
+on 404) with Google Search grounding and asks for a JSON array; the answer is parsed leniently. Only fund names,
+ISINs, index, TER and policy of the positions to replace are sent. ISINs are checked (check digit); catalog facts
+win; an unknown Belgian registration means 1.32% is assumed. The key comes from the field or `GEMINI_API_KEY` and is
+not stored. Verified against the live endpoint only up to key validation (no key here).

@@ -123,6 +123,53 @@ def cmd_harvest(a):
         print("  Note: " + n)
 
 
+def cmd_switch(a):
+    from .engine.harvest import CostModel
+    from .engine.switch import compare, default_sources, net_spread, source_fund, sources_for, spread_plan
+    from .funds import CATALOG, WORLD_TARGETS, Fund, lookup
+    rep = _build(a)
+    costs = CostModel(spread=a.spread)
+    keys = set(a.sell or []) or default_sources(rep)
+    srcs = sources_for(rep, keys, costs)
+    if not srcs:
+        sys.exit("Nothing to switch: give --sell ISIN for a position you hold.")
+    targets = [lookup(i) or Fund(i, i, verified=False) for i in (a.target or WORLD_TARGETS)]
+    if a.suggest:
+        from .suggest import suggest
+        res = suggest(a.gemini_key or os.environ.get("GEMINI_API_KEY", ""), [source_fund(s) for s in srcs],
+                      model=a.gemini_model, search=not a.no_search, exclude=tuple(t.isin for t in targets))
+        if res.error:
+            print(f"Gemini: {res.error}")
+        for r in res.rejected:
+            print(f"Gemini suggestion left out: {r}")
+        targets += [f for f in res.funds if f.isin not in {t.isin for t in targets}]
+        for title, url in res.citations:
+            print(f"  source: {title} {url}")
+    cases = sorted(compare(rep, srcs, targets, a.horizon, costs, tax_reinvested=not a.no_tax_on_reinvested),
+                   key=lambda c: c.net, reverse=True)
+    print(f"\nSwitch {', '.join(f'{s.qty:g} {s.name} ({s.broker})' for s in srcs)}: value {_eur(cases[0].value)}")
+    print(f"Meerwaardebelasting if sold now: {_eur(cases[0].cgt_now)}\n")
+    plans = {c.target.isin: spread_plan(rep, srcs, c, costs) for c in cases}
+    cases.sort(key=lambda c: net_spread(c, plans[c.target.isin]), reverse=True)
+    print(f"  {'Target':<44} {'Stock exch. tax':>15} {'All now':>11} {'Yearly':>9} {'Break-even':>10} "
+          f"{f'Net {a.horizon}y now':>13} {f'Net {a.horizon}y spread':>15}")
+    for c in cases:
+        be = "never" if c.break_even is None else f"{c.break_even:.1f} yrs"
+        flag = "" if c.target.verified else "  (unverified)"
+        print(f"  {(c.target.ticker + ' ' + c.target.name)[:44]:<44} {c.target_tob:>14.2%} {_eur(c.now):>11} "
+              f"{_eur(c.yearly):>9} {be:>10} {_eur(c.net):>13} {_eur(net_spread(c, plans[c.target.isin])):>15}{flag}")
+    best = cases[0]
+    plan = plans[best.target.isin]
+    print(f"\nSpread within the exemption, into {best.target.ticker or best.target.isin} (prices kept at today's level):")
+    for st in plan.steps:
+        print(f"  {st.year}: " + ", ".join(f"{q:g} × {k[0]} {k[1]}" for k, q in st.units.items())
+              + f"  gain {_eur(st.gain)}, costs {_eur(st.costs)}")
+    print(f"  {'Done' if plan.done else 'Not done'} after {plan.years} year(s): no meerwaardebelasting (instead of "
+          f"{_eur(best.cgt_now)} now), yearly benefit you wait for {_eur(plan.benefit_waited)}, costs {_eur(plan.costs)}.")
+    for n in best.notes:
+        print(f"  Note: {n}")
+
+
 def cmd_tax_report(a):
     _check_name(a.xlsx, ".xlsx", "--xlsx")
     _check_name(a.pdf, ".pdf", "--pdf")
@@ -205,6 +252,20 @@ def main(argv=None):
     h.add_argument("--spread", type=float, default=0.0005, help="half the bid-ask spread per trade, as a fraction (default 0.0005)")
     h.add_argument("--exclude", action="append", metavar="ASSET", help="leave out an ISIN or ticker (repeatable)")
     h.set_defaults(func=cmd_harvest)
+
+    w2 = sub.add_parser("switch", help="Switch planner: sell positions and buy a target fund; compare targets, spread over years")
+    common(w2)
+    w2.add_argument("--sell", action="append", metavar="ISIN", help="position to switch (repeatable; default: distributing ETFs)")
+    w2.add_argument("--target", action="append", metavar="ISIN", help="target fund (repeatable; default: world ETFs in the catalog)")
+    w2.add_argument("--horizon", type=int, default=10, help="years to compare over (default 10)")
+    w2.add_argument("--spread", type=float, default=0.0005, help="half the bid-ask spread per trade, fraction (default 0.0005)")
+    w2.add_argument("--no-tax-on-reinvested", action="store_true",
+                    help="don't count 10%% meerwaardebelasting later on dividends an accumulating fund reinvests")
+    w2.add_argument("--suggest", action="store_true", help="ask Gemini for cheaper funds with similar content")
+    w2.add_argument("--gemini-key", help="Gemini API key (default: the GEMINI_API_KEY environment variable)")
+    w2.add_argument("--gemini-model", help="Gemini model (default gemini-3.8-flash, falls back to gemini-2.5-flash)")
+    w2.add_argument("--no-search", action="store_true", help="don't let Gemini use Google Search")
+    w2.set_defaults(func=cmd_switch)
 
     t = sub.add_parser("tax-report", help="Yearly tax report (meerwaardebelasting, dividends and interest, stock exchange "
                                           "tax, checklist) as Excel and PDF")

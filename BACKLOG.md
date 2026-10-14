@@ -5,14 +5,9 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–6 are done. Next in line: 7.
+Nothing open: items 1–7 are done. Next in line: 8.
 
 ## Next
-
-### 7. Switch planner · M
-The IUSA → global ETF analysis as a tool: pick positions to sell and a target fund, and see the one-time cost
-(meerwaardebelasting, stock exchange tax at 0.12% or 1.32%, fees, spread) against the yearly effect (dividend
-tax saved, fund cost difference), with a plan spread over tax years to stay within the exemption.
 
 ### 8. Manual positions · S
 Add positions no export covers: funds, tak 21/23 policies, savings, investment gold. Purchase date, quantity,
@@ -58,3 +53,4 @@ between ETFs (for example S&P 500 inside MSCI World inside ACWI).
 - 4. Exemption over the years · done 2026-10-14 · carry-forward (+€1,000/yr, 5 yrs, max €15,000), partner with ownership shares per broker/position, Tax years tab, profile.json (D14, D15).
 - 5. Yearly tax report · done 2026-10-14 · Tax report tab, `meerwaarde tax-report`, Excel and PDF, checklist with foreign accounts; DEGIRO stock exchange tax is an estimate until item 1.
 - 6. Year-end gain harvesting · done 2026-10-14 · Year-end tab, `meerwaarde harvest`, Excel sheet; real stock exchange tax rates, keeps the €1,000 carry-forward by default, loss flags, anti-abuse note (D21).
+- 7. Switch planner · done 2026-10-14 · Switch tab, `meerwaarde switch`, Excel sheet; real stock exchange tax rates, conservative yearly effect, spread plan over years; optional Gemini suggestions with your own key (D22, D23).

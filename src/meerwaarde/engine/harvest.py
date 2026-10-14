@@ -14,7 +14,6 @@ Choices (docs/decisions.md D21):
 """
 from __future__ import annotations
 
-import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -118,12 +117,16 @@ def observed_tob_rate(portfolio, broker: str, asset: str) -> float | None:
     for r in portfolio.tob:
         if r.broker == broker and r.asset == asset:
             taxed[r.date.date()] += -r.amount_eur
-    rates = [taxed[d] / gross[d] for d in taxed if gross.get(d) and taxed[d] > 0]
-    if not rates:
-        return None
-    m = statistics.median(rates)
-    best = min(TOB_CAPS, key=lambda r: abs(r - m))
-    return best if abs(best - m) <= 0.35 * best else None
+    # the most recent trade decides: a fund's rate changes when it gets registered in Belgium (VWCE went 0.12% -> 1.32%)
+    for d in sorted((d for d in taxed if gross.get(d) and taxed[d] > 0), reverse=True):
+        m = taxed[d] / gross[d]
+        capped = [r for r, cap in TOB_CAPS.items() if abs(taxed[d] - cap) < 0.01]
+        if capped:
+            return capped[0]
+        best = min(TOB_CAPS, key=lambda r: abs(r - m))
+        if abs(best - m) <= 0.35 * best:
+            return best
+    return None
 
 
 def tob_for(portfolio, h, costs: CostModel) -> tuple[float, str]:

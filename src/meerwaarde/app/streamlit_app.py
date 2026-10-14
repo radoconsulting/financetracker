@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from datetime import date
@@ -15,6 +16,10 @@ from meerwaarde.engine.portfolio import Portfolio, PortfolioOptions
 from meerwaarde.engine.tax import TaxCalculator, TaxRules
 from meerwaarde.engine.harvest import DEFAULT_COMMISSION, CostModel, plan_harvest
 from meerwaarde.engine.income_tax import CATEGORIES
+from meerwaarde.engine.switch import (compare, default_sources, funds_from_json, funds_to_json, net_spread, source_fund,
+                                      sources_for, spread_plan)
+from meerwaarde.funds import CATALOG, WORLD_TARGETS, Fund, lookup
+from meerwaarde import suggest as gemini
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.models import LAW_TYPES, law_type
 from meerwaarde.parsers import combine, parse_file
@@ -31,6 +36,7 @@ DATA = Path(os.environ.get("MEERWAARDE_DATA") or Path.home() / ".local" / "share
 UPLOADS = DATA / "uploads"
 PRICES_CSV = DATA / "prices.csv"
 PROFILE = DATA / "profile.json"
+FUNDS_JSON = DATA / "funds.json"
 CACHE = DATA / "cache"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
@@ -166,7 +172,8 @@ def money(v):
     return "—" if v is None or pd.isna(v) else f"€{v:,.0f}"
 
 
-tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Tax report", "Tax years", "Prices", "Data"])
+tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
+                "Tax years", "Prices", "Data"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -425,8 +432,128 @@ with tabs[4]:
     for n in plan.notes:
         st.info(n)
 
-# ---------------------------------------------------------------- tax report
+# ---------------------------------------------------------------- switch planner
 with tabs[5]:
+    st.subheader("Switch to another fund")
+    st.caption("Sell positions and buy a target fund: the cost now against the yearly effect, and a sw_plan that spreads the "
+               "sales over the years so each year stays within the exemption.")
+    sw_keys = {f"{h.broker}|{h.asset}": f"{h.broker} · {h.name} ({h.qty:g})" for h in pf.holdings() if h.asset_class != "Cash/FX"}
+    sw_default = [f"{b}|{a}" for b, a in default_sources(rep) if f"{b}|{a}" in sw_keys]
+    sw_pick = st.multiselect("Positions to switch", list(sw_keys), default=sw_default, format_func=lambda k: sw_keys[k],
+                             key="sw-pick", help="Default: the distributing ETFs you hold.")
+    s1, s2, s3 = st.columns(3)
+    sw_horizon = s1.slider("Compare over (years)", 3, 30, 10, key="sw-horizon")
+    sw_back = s2.toggle("Count 10% meerwaardebelasting later on reinvested dividends", value=True, key="sw-back",
+                        help="Conservative: an accumulating fund reinvests the dividends, so they end up in the gain you "
+                             "pay 10% on when you sell (if that year's gains exceed the exemption).")
+    sw_spread = s3.number_input("Spread per trade (%)", 0.0, 2.0, 0.05, 0.01, key="sw-spread") / 100
+    sw_costs = CostModel(spread=sw_spread)
+
+    if "sw-targets" not in st.session_state:
+        saved = []
+        try:
+            saved = funds_from_json(json.loads(FUNDS_JSON.read_text())) if FUNDS_JSON.exists() else []
+        except (OSError, ValueError):
+            saved = []
+        st.session_state["sw-targets"] = saved or [CATALOG[i] for i in WORLD_TARGETS]
+    sw_srcs = sources_for(rep, {tuple(k.split("|", 1)) for k in sw_pick}, sw_costs) if sw_pick else []
+
+    with st.expander("Suggest cheaper funds with Gemini (optional, your own API key)"):
+        st.caption("Sends only the names, ISINs, index and costs of the positions above, no amounts. Suggestions are "
+                   "marked unverified: check them (KID, justETF) before buying. Key from the GEMINI_API_KEY environment "
+                   "variable if set; it isn't stored.")
+        g1, g2, g3 = st.columns([3, 2, 1])
+        g_key = g1.text_input("Gemini API key", value=os.environ.get("GEMINI_API_KEY", ""), type="password", key="g-key")
+        g_model = g2.text_input("Model", value=gemini.DEFAULT_MODEL, key="g-model")
+        g_search = g3.toggle("Google Search", value=True, key="g-search", help="Let Gemini look up current facts")
+        if st.button("Suggest", disabled=not (g_key and sw_srcs)):
+            with st.spinner("Asking Gemini…"):
+                res = gemini.suggest(g_key, [source_fund(x) for x in sw_srcs], model=g_model or None, search=g_search,
+                                     exclude=tuple(f.isin for f in st.session_state["sw-targets"]))
+            st.session_state["sw-gemini"] = res
+            have = {f.isin for f in st.session_state["sw-targets"]}
+            st.session_state["sw-targets"] = st.session_state["sw-targets"] + [f for f in res.funds if f.isin not in have]
+            st.session_state.pop("sw-editor", None)
+        res = st.session_state.get("sw-gemini")
+        if res:
+            if res.error:
+                st.error(res.error)
+            if res.funds:
+                st.success(f"{len(res.funds)} suggestion(s) from {res.model} added to the sw_targets below.")
+            for r in res.rejected:
+                st.warning("Left out: " + r)
+            if res.citations:
+                st.markdown("Sources: " + " · ".join(f"[{t}]({u})" for t, u in res.citations[:8]))
+
+    tdf = pd.DataFrame([dict(use=True, **f.as_row()) for f in st.session_state["sw-targets"]])
+    ted = st.data_editor(tdf, hide_index=True, width="stretch", num_rows="dynamic", key="sw-editor", column_config={
+        "use": st.column_config.CheckboxColumn("Compare"), "isin": "ISIN", "name": "Fund", "ticker": "Ticker", "index": "Index",
+        "ter_pct": st.column_config.NumberColumn("TER (%)", format="%.3f"), "accumulating": st.column_config.CheckboxColumn("Acc"),
+        "tob_pct": st.column_config.NumberColumn("Stock exchange tax (%)", help="Empty: unknown (1.32% assumed). Your broker's "
+                                                  "rate on earlier trades of the fund wins."),
+        "size_eur_m": st.column_config.NumberColumn("Size (€m)", format="%.0f"), "source": "Facts from",
+        "verified": st.column_config.CheckboxColumn("Checked"), "reason": "Why suggested"})
+    sw_targets = []
+    for r in ted.itertuples():
+        if not isinstance(r.isin, str) or not r.isin.strip():
+            continue
+        f = Fund(r.isin.strip().upper(), str(r.name or r.isin), str(r.ticker or ""), str(r.index or ""),
+                 None if pd.isna(r.ter_pct) else float(r.ter_pct) / 100,
+                 None if pd.isna(r.accumulating) else bool(r.accumulating),
+                 None if pd.isna(r.tob_pct) else float(r.tob_pct) / 100, "", None if pd.isna(r.size_eur_m) else float(r.size_eur_m),
+                 str(r.source or "you"), bool(r.verified) if pd.notna(r.verified) else False, str(r.reason or ""))
+        if r.use:
+            sw_targets.append(f)
+    if st.button("Save this list of funds"):
+        FUNDS_JSON.write_text(json.dumps(funds_to_json([f for f in sw_targets]), indent=2))
+        st.toast("Saved")
+
+    if sw_srcs and sw_targets:
+        sw_cases = compare(rep, sw_srcs, sw_targets, sw_horizon, sw_costs, tax_reinvested=sw_back)
+        sw_plans = {c.target.isin: spread_plan(rep, sw_srcs, c, sw_costs) for c in sw_cases}
+        sw_cases.sort(key=lambda c: net_spread(c, sw_plans[c.target.isin]), reverse=True)
+        c0 = sw_cases[0]
+        st.caption(f"Value {money(c0.value)} · meerwaardebelasting if all sold now {money(c0.cgt_now)} · dividends over "
+                   f"the last 12 months {money(sum(x.dividends_year for x in sw_srcs))}")
+        st.dataframe(pd.DataFrame([dict(
+            fund=f"{c.target.ticker} {c.target.name}".strip(), tob=f"{c.target_tob:.2%}", tob_from=c.target_tob_source,
+            now=c.now, yearly=c.yearly, div=c.dividend_tax_saved - c.dividend_tax_back, ter=c.ter_saved,
+            exit=c.exit_tob_extra, be=c.break_even, net_now=c.net, net_spread=net_spread(c, sw_plans[c.target.isin]),
+            checked=c.target.verified) for c in sw_cases]), hide_index=True, width="stretch", column_config={
+            "fund": "Target", "tob": "Stock exchange tax", "tob_from": "Rate from",
+            "now": st.column_config.NumberColumn("Cost if all now", format=EUR, help="Meerwaardebelasting + stock exchange tax + commissions + spread"),
+            "yearly": st.column_config.NumberColumn("Yearly effect", format=EUR),
+            "div": st.column_config.NumberColumn("of which dividend tax", format=EUR),
+            "ter": st.column_config.NumberColumn("of which running cost", format=EUR),
+            "exit": st.column_config.NumberColumn("Extra stock exchange tax when you sell it later", format=EUR),
+            "be": st.column_config.NumberColumn("Break-even (yrs)", format="%.1f"),
+            "net_now": st.column_config.NumberColumn(f"Net {sw_horizon} yrs, all now", format=EUR),
+            "net_spread": st.column_config.NumberColumn(f"Net {sw_horizon} yrs, spread", format=EUR),
+            "checked": st.column_config.CheckboxColumn("Facts checked")})
+        pick_t = st.selectbox("Plan for", [c.target.isin for c in sw_cases],
+                              format_func=lambda i: next(f"{c.target.ticker} {c.target.name}" for c in sw_cases if c.target.isin == i))
+        sw_case = next(c for c in sw_cases if c.target.isin == pick_t)
+        sw_plan = sw_plans[pick_t]
+        st.dataframe(pd.DataFrame([dict(year=st_.year, sell=", ".join(f"{q:g} × {k[0]}" for k, q in st_.units.items()),
+                                        value=st_.value, gain=st_.gain, costs=st_.costs) for st_ in sw_plan.steps]),
+                     hide_index=True, width="stretch", column_config={
+            "year": st.column_config.NumberColumn("Year", format="%d"), "sell": "Sell (and buy the target)",
+            "value": st.column_config.NumberColumn("Value", format=EUR), "gain": st.column_config.NumberColumn("Taxable gain", format=EUR),
+            "costs": st.column_config.NumberColumn("Costs", format=EUR)})
+        m = st.columns(3)
+        m[0].metric("Meerwaardebelasting avoided", money(sw_case.cgt_now), help="Compared with selling everything now")
+        m[1].metric("Yearly benefit you wait for", money(sw_plan.benefit_waited), help="While part of the position waits for a later year")
+        m[2].metric("Spreading gains", money(sw_case.cgt_now - sw_plan.benefit_waited - (sw_plan.costs - sw_case.costs)))
+        st.caption(("Done in " if sw_plan.done else "Not done after ") + f"{sw_plan.years} year(s), assuming today's prices, the "
+                   "full exemption for this switch in later years and no other sales. Rising prices mean more years.")
+        for n in sw_case.notes + ["Moving from an S&P 500 fund to a world fund changes what you own (more countries, about 60% "
+                               "US instead of 100%): that's a choice, not a cost."]:
+            st.info(n)
+    elif not sw_srcs:
+        st.info("Pick the positions to switch.")
+
+# ---------------------------------------------------------------- tax report
+with tabs[6]:
     first_year = min([d.year for d in [t.ts for t in pf.transactions]] + [rules.year])
     years = list(range(max(2024, first_year), max(rules.year, date.today().year) + 1))
     ry = st.selectbox("Income year", years, index=years.index(rules.year) if rules.year in years else len(years) - 1,
@@ -498,7 +625,7 @@ with tabs[5]:
         st.markdown("\n".join(f"- {t}" for t in INCOME_RULES_TEXT))
 
 # ---------------------------------------------------------------- tax years: people, exemption history, other income
-with tabs[6]:
+with tabs[7]:
     st.subheader("People")
     has_partner = st.toggle("Include a partner (each person has their own exemptions)", value=not hh.single)
     partner_name = st.text_input("Partner's name", value=hh.name("partner") if not hh.single else "Partner",
@@ -591,7 +718,7 @@ with tabs[6]:
     st.caption(f"Saved in {PROFILE}. Other sales are counted as financial instruments.")
 
 # ---------------------------------------------------------------- prices
-with tabs[7]:
+with tabs[8]:
     st.subheader("Prices")
     st.caption("Fill in your own price where one is missing or wrong. Your prices are saved and win over every other source.")
     rows = []
@@ -623,7 +750,7 @@ with tabs[7]:
                 st.markdown(f"- {e}")
 
 # ---------------------------------------------------------------- data
-with tabs[8]:
+with tabs[9]:
     st.subheader("Rows read from your files")
     tdf = pd.DataFrame([t.as_dict() for t in pf.transactions])
     kinds = sorted(tdf.kind.unique()) if not tdf.empty else []
@@ -638,7 +765,9 @@ with tabs[8]:
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
     st.subheader("Export")
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan), file_name=default_name(rep),
+    sw_result = (sw_srcs, sw_cases, sw_plans, sw_horizon) if sw_srcs and sw_targets else None
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result),
+                       file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
                             "and how everything is calculated.")
