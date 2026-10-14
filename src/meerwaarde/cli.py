@@ -112,7 +112,9 @@ def cmd_tax_report(a):
               + (f" (incl. {_eur(e.carried)} carried forward)" if e and e.carried else "") + f", tax {_eur(p['tax'])}")
         for l in it.lines:
             print(f"  {CATEGORIES[l.category]:<34} {l.broker:<8} net {_eur(l.net):>12}  (foreign tax {_eur(l.foreign_tax)})")
-        print(f"  Dividend exemption used {_eur(it.exemption_used)}, taxable {_eur(it.taxable)}, tax (30%) {_eur(it.tax)}")
+        print(f"  Dividend exemption used {_eur(it.exemption_used)}, taxable {_eur(it.taxable)}, tax (30%) {_eur(it.tax)}"
+              + (f", already withheld in Belgium {_eur(it.be_withheld)}" if abs(it.be_withheld) > 0.005 else "")
+              + f", to pay {_eur(it.to_pay)}")
     print("\nStock exchange tax")
     for r in ytr.tob.itertuples():
         print(f"  {r.broker:<8} {_eur(r.amount_eur):>12}  {r.basis}")

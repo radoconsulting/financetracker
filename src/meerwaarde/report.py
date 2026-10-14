@@ -40,6 +40,9 @@ INCOME_RULES_TEXT = [
     "The 30% applies to the amount received after foreign withholding tax; the foreign tax is not refunded or credited.",
     "Dividends from shares are exempt up to €833 per person (income 2025 and 2026). Distributions from funds and ETFs "
     "don't qualify. Interest from a broker's cash account has no exemption.",
+    "Dividends of Belgian companies had the Belgian 30% withheld at source, also at a foreign broker: that counts as "
+    "paid. Declaring them is only useful to use the dividend exemption, which then gives a refund.",
+    "Securities-lending income (DEGIRO) is counted at 30% as other movable income; check the treatment with your adviser.",
 ]
 
 # Stock exchange tax rates for an estimate when the broker's export doesn't list it (docs/domain/belgian-taxes.md).
@@ -251,19 +254,23 @@ class Report:
             for pid, it in self.income_tax(y).items():
                 for l in it.lines:
                     rows.append(dict(year=y, person=self.household.name(pid), broker=l.broker, category=CATEGORIES[l.category],
-                                     received=l.count, gross_eur=l.gross, foreign_tax_eur=l.foreign_tax, net_eur=round(l.net, 2)))
-        return pd.DataFrame(rows, columns=["year", "person", "broker", "category", "received", "gross_eur", "foreign_tax_eur", "net_eur"])
+                                     received=l.count, gross_eur=l.gross, foreign_tax_eur=l.foreign_tax, net_eur=round(l.net, 2),
+                                     be_withheld_eur=l.be_withheld))
+        return pd.DataFrame(rows, columns=["year", "person", "broker", "category", "received", "gross_eur", "foreign_tax_eur",
+                                           "net_eur", "be_withheld_eur"])
 
     def income_tax_summary(self, years: list[int] | None = None) -> pd.DataFrame:
         rows = []
         for y in years or self.income_years():
             for pid, it in self.income_tax(y).items():
                 rows.append(dict(year=y, person=self.household.name(pid), shares_net=round(it.total("shares"), 2),
-                                 funds_net=round(it.total("funds"), 2), interest_net=round(it.total("interest"), 2),
+                                 funds_net=round(it.total("funds"), 2),
+                                 interest_net=round(it.total("interest") + it.total("other"), 2),
                                  foreign_tax=round(it.foreign_tax, 2), exemption_used=round(it.exemption_used, 2),
-                                 taxable=round(it.taxable, 2), tax=round(it.tax, 2)))
+                                 taxable=round(it.taxable, 2), tax=round(it.tax, 2), be_withheld=round(it.be_withheld, 2),
+                                 to_pay=round(it.to_pay, 2)))
         return pd.DataFrame(rows, columns=["year", "person", "shares_net", "funds_net", "interest_net", "foreign_tax",
-                                           "exemption_used", "taxable", "tax"])
+                                           "exemption_used", "taxable", "tax", "be_withheld", "to_pay"])
 
     # ---------- stock exchange tax ----------
     def tob_detail(self, year: int | None = None) -> pd.DataFrame:

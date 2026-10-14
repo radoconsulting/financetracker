@@ -95,15 +95,19 @@ def _cgt(ytr: TaxYearReport, pid: str) -> list:
 
 def _income(ytr: TaxYearReport, pid: str) -> list:
     it = ytr.income[pid]
-    rows = [["Income", "Broker", "Gross", "Foreign tax", "Net (taxable base)"]]
+    rows = [["Income", "Broker", "Gross", "Foreign tax", "Net (taxable base)", "BE tax withheld"]]
     for l in it.lines:
-        rows.append([CATEGORIES[l.category], l.broker, eur(l.gross), eur(l.foreign_tax), eur(l.net)])
+        rows.append([_p(CATEGORIES[l.category]), l.broker, eur(l.gross), eur(l.foreign_tax), eur(l.net), eur(l.be_withheld)])
     if len(rows) == 1:
-        rows.append(["No dividends or interest", "", "", "", ""])
-    rows.append(["Dividend exemption (shares only)", "", "", "", eur(-it.exemption_used)])
-    rows.append(["Taxable at 30%", "", "", "", eur(it.taxable, dash=False)])
-    rows.append(["Tax to pay (30%)", "", "", "", eur(it.tax, dash=False)])
-    return [_table(rows, [62 * mm, 28 * mm, 26 * mm, 26 * mm, 30 * mm], right=(2, 3, 4), total_rows=(len(rows) - 1,))]
+        rows.append(["No dividends or interest", "", "", "", "", ""])
+    rows.append(["Dividend exemption (shares only)", "", "", "", eur(-it.exemption_used), ""])
+    rows.append(["Taxable at 30%", "", "", "", eur(it.taxable, dash=False), ""])
+    rows.append(["Tax (30%)", "", "", "", eur(it.tax, dash=False), ""])
+    if abs(it.be_withheld) > 0.005:
+        rows.append(["Already withheld in Belgium", "", "", "", eur(it.be_withheld), ""])
+    rows.append(["To pay (negative = refund)", "", "", "", eur(it.to_pay, dash=False), ""])
+    return [_table(rows, [52 * mm, 22 * mm, 24 * mm, 24 * mm, 30 * mm, 28 * mm], right=(2, 3, 4, 5),
+                   total_rows=(len(rows) - 1,))]
 
 
 def tax_report_pdf(ytr: TaxYearReport, target=None):
@@ -116,9 +120,9 @@ def tax_report_pdf(ytr: TaxYearReport, target=None):
 
     # summary box
     cgt_tax = ytr.cgt["tax"]
-    inc_tax = sum(i.tax for i in ytr.income.values())
+    inc_tax = sum(i.to_pay for i in ytr.income.values())
     tob = float(ytr.tob["amount_eur"].sum()) if not ytr.tob.empty else 0.0
-    s.append(_table([["Meerwaardebelasting", "Tax on dividends and interest", "Stock exchange tax paid"],
+    s.append(_table([["Meerwaardebelasting", "To pay on dividends and interest", "Stock exchange tax paid"],
                      [eur(cgt_tax, dash=False), eur(inc_tax, dash=False), eur(tob, dash=False)]],
                     [60 * mm, 60 * mm, 60 * mm]))
     s.append(Paragraph("Estimates from your broker exports. Stock exchange tax was withheld by the brokers; it is shown "

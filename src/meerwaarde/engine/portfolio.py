@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from ..models import (Transaction, Lot, RealizedRow, Holding, IncomeRow, TobRow, BUY, SELL, REWARD, DEPOSIT, WITHDRAWAL,
-                      CASH_IN, CASH_OUT, DIVIDEND, INTEREST, WITHHOLDING, FX_RESULT, FEE, TOB)
+                      CASH_IN, CASH_OUT, DIVIDEND, INTEREST, WITHHOLDING, FX_RESULT, FEE, TOB, REDEMPTION)
 
 EPS = 1e-10
 
@@ -43,6 +44,12 @@ class Portfolio:
         self.lots: dict[tuple, list[Lot]] = defaultdict(list)
         self.meta: dict[tuple, dict] = {}
         self.off_wallet: dict[tuple, float] = defaultdict(float)
+        self.tob_separate = any(t.kind == TOB and t.ref == "separate" for t in self.transactions)
+        self.transactions = self._attach_separate_tob(self.transactions)
+        self._payouts = defaultdict(list)    # (broker, asset) -> [(ts, amount)] bond payouts from an account statement
+        for t in self.transactions:
+            if t.kind == REDEMPTION:
+                self._payouts[(t.broker, t.asset)].append((t.ts, t.amount_eur or 0.0))
         self._build()
 
     # ---------- helpers ----------
@@ -70,6 +77,38 @@ class Portfolio:
             if lot.qty <= EPS:
                 pool.pop(0)
         return taken, max(0.0, left)
+
+    # ---------- stock exchange tax booked apart from the trade (DEGIRO account statement) ----------
+    def _attach_separate_tob(self, txns: list[Transaction]) -> list[Transaction]:
+        """Add stock exchange tax that the trade export leaves out to the trade's costs (on copies of the rows)."""
+        minute = lambda ts: ts.replace(second=0, microsecond=0)  # noqa: E731
+        trades = defaultdict(list)
+        for i, t in enumerate(txns):
+            if t.kind in (BUY, SELL):
+                trades[(t.broker, t.asset, minute(t.ts))].append(i)
+        taxes = defaultdict(list)
+        for t in txns:
+            if t.kind == TOB and t.ref == "separate":
+                taxes[(t.broker, t.asset, minute(t.ts))].append(t)
+        out = list(txns)
+        for key, rows in taxes.items():
+            idx = sorted(trades.get(key, []), key=lambda i: abs(txns[i].gross_eur or 0))
+            if not idx:                                   # no trade in the same minute: same day instead
+                idx = sorted((i for (b, a, m), ii in trades.items() if b == key[0] and a == key[1]
+                              and m.date() == key[2].date() for i in ii), key=lambda i: abs(txns[i].gross_eur or 0))
+            if not idx:
+                for t in rows:
+                    out.append(dataclasses.replace(t, kind=FEE, name=f"Stock exchange tax {t.name}",
+                                                   note="Stock exchange tax without a matching trade"))
+                self.warnings.append(f"{key[0]}: stock exchange tax on {key[2]:%Y-%m-%d} for {rows[0].name} has no matching "
+                                     "trade in the trade export; counted as a cost")
+                continue
+            for n, t in enumerate(sorted(rows, key=lambda t: abs(t.amount_eur or 0))):
+                j = idx[min(n, len(idx) - 1)]
+                tr = out[j]
+                cost = -(t.amount_eur or 0.0)
+                out[j] = dataclasses.replace(tr, fees_eur=(tr.fees_eur or 0.0) + cost, total_eur=(tr.total_eur or 0.0) - cost)
+        return sorted(out, key=lambda t: (t.ts, t.broker, t.order))
 
     # ---------- conversions ----------
     def _conversion_pairs(self):
@@ -118,10 +157,15 @@ class Portfolio:
             elif t.kind == SELL:
                 q = abs(t.qty)
                 proceeds, gross, note = t.total_eur, t.gross_eur, ""
-                if (o.bond_redemption_at_par and self._cls(t) == "Bond" and abs(proceeds or 0) < 0.005 and abs(gross or 0) < 0.005):
-                    proceeds = gross = q            # nominal repaid at 100%
-                    note = "Redeemed at par (payout is on the cash account, not in the export)"
-                    self.warnings.append(f"{t.broker}: {t.name} redeemed on {t.ts:%Y-%m-%d}; counted at 100% of nominal")
+                if self._cls(t) == "Bond" and abs(proceeds or 0) < 0.005 and abs(gross or 0) < 0.005:
+                    paid = [a for ts, a in self._payouts.get(key, []) if abs((ts - t.ts).days) <= 31]
+                    if paid:
+                        proceeds = gross = sum(paid)
+                        note = "Redeemed: payout from the account statement"
+                    elif o.bond_redemption_at_par:
+                        proceeds = gross = q            # nominal repaid at 100%
+                        note = "Redeemed at par (payout is on the cash account, not in the export)"
+                        self.warnings.append(f"{t.broker}: {t.name} redeemed on {t.ts:%Y-%m-%d}; counted at 100% of nominal")
                 taken, short = self._take(key, q)
                 if short > 1e-6:
                     self.warnings.append(f"{t.broker}: sold {short:g} more {t.name} than bought on {t.ts:%Y-%m-%d}; counted at zero cost")
@@ -155,13 +199,15 @@ class Portfolio:
             elif t.kind in (CASH_IN, CASH_OUT):
                 self.cash.append(CashFlow(t.broker, t.ts, t.amount_eur if t.amount_eur is not None else t.qty, t.name))
             elif t.kind in (DIVIDEND, INTEREST, WITHHOLDING):
-                self.income.append(IncomeRow(t.broker, t.ts, t.asset, t.name, t.kind, t.amount_eur or 0.0, t.price, t.currency,
-                                             t.note, self._cls(t)))
+                cls = self.meta.get(key, {}).get("asset_class") or self._cls(t)
+                self.income.append(IncomeRow(t.broker, t.ts, t.asset, self.meta.get(key, {}).get("name") or t.name, t.kind,
+                                             t.amount_eur or 0.0, t.price, t.currency, t.note, cls))
             elif t.kind == TOB:
                 self.tob.append(TobRow(t.broker, t.ts, t.asset, t.name, t.qty, t.price, t.amount_eur or 0.0, t.note))
             elif t.kind in (FX_RESULT, FEE):
                 amt = t.amount_eur or 0.0
-                self.realized.append(RealizedRow(t.broker, t.ts, t.asset, t.name, "Cash/FX", 0.0, amt, 0.0, None, [], t.note or t.kind))
+                self.realized.append(RealizedRow(t.broker, t.ts, t.asset, t.name, "Cash/FX", 0.0, amt, 0.0, None, [],
+                                                 t.note or t.kind, t.kind))
         self._statement_holdings()
 
     def _statement_holdings(self):

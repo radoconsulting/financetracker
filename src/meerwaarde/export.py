@@ -345,16 +345,20 @@ EXEMPTION = [
 INCOME_SUMMARY = [
     Col("year", "Year", YEAR, 8), Col("person", "Person", width=14),
     Col("shares_net", "Dividends from shares, net (€)", EUR, 17),
-    Col("funds_net", "Distributions of funds and ETFs, net (€)", EUR, 19), Col("interest_net", "Interest, net (€)", EUR, 15),
+    Col("funds_net", "Distributions of funds and ETFs, net (€)", EUR, 19),
+    Col("interest_net", "Interest and other income, net (€)", EUR, 16),
     Col("foreign_tax", "Foreign tax withheld (€)", EUR, 16), Col("exemption_used", "Dividend exemption used (€)", EUR, 17),
     Col("taxable", "Taxable at 30% (€)", EUR, 16,
         "=MAX(0,{shares_net}{r})-{exemption_used}{r}+MAX(0,{funds_net}{r})+MAX(0,{interest_net}{r})"),
-    Col("tax", "Tax (€)", EUR, 14, "={taxable}{r}*$B$2"),
+    Col("tax", "Tax 30% (€)", EUR, 14, "={taxable}{r}*$B$2"),
+    Col("be_withheld", "Already withheld in Belgium (€)", EUR, 17),
+    Col("to_pay", "To pay; negative = refund (€)", EUR, 17, "={tax}{r}+{be_withheld}{r}"),
 ]
 INCOME_DETAIL = [
     Col("year", "Year", YEAR, 8), Col("person", "Person", width=14), Col("broker", "Broker", width=10),
     Col("category", "Income", width=34), Col("received", "Payments", COUNT, 10), Col("gross_eur", "Gross (€)", EUR, 15),
     Col("foreign_tax_eur", "Foreign tax (€)", EUR, 15), Col("net_eur", "Net (€)", EUR, 15, "={gross_eur}{r}+{foreign_tax_eur}{r}"),
+    Col("be_withheld_eur", "Belgian tax withheld (€)", EUR, 15),
 ]
 
 
@@ -610,7 +614,7 @@ TR_TOB = [
 
 def _tr_report_sheet(ws, ytr) -> None:
     from .engine.income_tax import CATEGORIES
-    for col, w in zip("ABCDEF", (44, 16, 16, 16, 18, 40)):
+    for col, w in zip("ABCDEF", (52, 16, 16, 16, 18, 40)):
         ws.column_dimensions[col].width = w
     _write(ws, 1, 1, ytr.title, TITLE)
     _write(ws, 2, 1, ytr.subtitle, NOTE)
@@ -666,7 +670,7 @@ def _tr_report_sheet(ws, ytr) -> None:
         if many:
             _write(ws, row, 1, name, BOLD)
             row += 1
-        _header(ws, row, ["Income", "Broker", "Gross", "Foreign tax", "Net (taxable base)"])
+        _header(ws, row, ["Income", "Broker", "Gross", "Foreign tax", "Net (taxable base)", "Belgian tax withheld"])
         first = row + 1
         for n, l in enumerate(it.lines):
             r = first + n
@@ -675,6 +679,7 @@ def _tr_report_sheet(ws, ytr) -> None:
             _write(ws, r, 3, l.gross, fmt=EUR)
             _write(ws, r, 4, l.foreign_tax, fmt=EUR)
             _write(ws, r, 5, f"=C{r}+D{r}", fmt=EUR)
+            _write(ws, r, 6, l.be_withheld, fmt=EUR)
         last = max(first, first + len(it.lines) - 1)
         r = first + max(1, len(it.lines))
         rng = lambda c: f"{c}{first}:{c}{last}"  # noqa: E731
@@ -685,11 +690,16 @@ def _tr_report_sheet(ws, ytr) -> None:
         _write(ws, r + 2, 1, "Taxable at 30%")
         _write(ws, r + 2, 5, f'=MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["shares"]}"))-E{r + 1}'
                              f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["funds"]}"))'
-                             f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["interest"]}"))', fmt=EUR)
-        _write(ws, r + 3, 1, "Tax on dividends and interest", BOLD, border=TOTAL_BORDER)
-        _write(ws, r + 3, 5, f"=E{r + 2}*$B$5", BOLD, EUR, border=TOTAL_BORDER)
-        inc_cells.append(f"E{r + 3}")
-        row = r + 5
+                             f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["interest"]}"))'
+                             f'+MAX(0,SUMIFS({rng("E")},{rng("A")},"{CATEGORIES["other"]}"))', fmt=EUR)
+        _write(ws, r + 3, 1, "Tax (30%)")
+        _write(ws, r + 3, 5, f"=E{r + 2}*$B$5", fmt=EUR)
+        _write(ws, r + 4, 1, "Already withheld in Belgium (Belgian companies' dividends)")
+        _write(ws, r + 4, 5, f"=SUM({rng('F')})", fmt=EUR)
+        _write(ws, r + 5, 1, "To pay on dividends and interest (negative = refund)", BOLD, border=TOTAL_BORDER)
+        _write(ws, r + 5, 5, f"=E{r + 3}+E{r + 4}", BOLD, EUR, border=TOTAL_BORDER)
+        inc_cells.append(f"E{r + 5}")
+        row = r + 7
 
     _write(ws, row, 1, f"3. Stock exchange tax {ytr.year}", SECTION)
     _header(ws, row + 1, ["Broker", "Trades", "Amount", "", "", "Basis"])
@@ -709,7 +719,7 @@ def _tr_report_sheet(ws, ytr) -> None:
     _write(ws, row, 1, "Totals", SECTION)
     _write(ws, row + 1, 1, "Meerwaardebelasting")
     _write(ws, row + 1, 2, "=" + "+".join(cgt_cells), BOLD, EUR)
-    _write(ws, row + 2, 1, "Tax on dividends and interest")
+    _write(ws, row + 2, 1, "To pay on dividends and interest (negative = refund)")
     _write(ws, row + 2, 2, "=" + "+".join(inc_cells), BOLD, EUR)
     _write(ws, row + 3, 1, "Stock exchange tax (already withheld by the brokers)")
     _write(ws, row + 3, 2, f"={tob_cell}", fmt=EUR)

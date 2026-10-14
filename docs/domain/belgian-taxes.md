@@ -17,8 +17,12 @@ If one share class of a sub-fund is registered in Belgium, all its share classes
 Shares: 0.35% (cap €1,600). LYNX withholds TOB and lists it per trade ("BE Securities Transaction Tax");
 DEGIRO withholds it for Belgian clients.
 
-Examples (October 2026): IWDA, SSAC/ISAC, SPYY, IMIE, SWRD, CSPX: 0.12%. VWCE and VGLA: 1.32% (registered).
+Examples (October 2026): IWDA, SPYY, IMIE, SWRD, CSPX: 0.12%. VWCE and VGLA: 1.32% (registered).
 Source: https://curvo.eu/article/tob, https://curvo.eu/article/best-world-etf-belgium
+
+**Correction from real data (DEGIRO account statement, 12-10-2026):** a purchase of iShares MSCI ACWI
+(IE00B6R52259, ISAC/SSAC) was charged **1.32%** on a real sale. So ISAC counts as Belgian-registered
+accumulating at DEGIRO; the 0.12% listed earlier for it was wrong. Check a fund's actual rate before a switch.
 
 ## Dividends and interest (implemented, backlog item 2: `engine/income_tax.py`)
 
@@ -65,9 +69,9 @@ the fund provider. Relevant positions today: iShares $ Corp Bond (IE0032895942),
 - LYNX lists the tax per trade in the statement's *Transaction Fees* section ("BE Securities Transaction Tax"); it is
   also inside the trade's commission, so the app keeps these rows as information only (`TOB` kind, `Portfolio.tob`).
   Per-year totals match the statement's NAV line "Transaction Fees" to the cent.
-- DEGIRO's *Transacties* export doesn't show it separately: the report gives an **estimate** at 0.12% (funds, ETFs,
-  bonds; cap €1,300) and 0.35% (shares, turbos; cap €1,600). It can't see the 1.32% of Belgian-registered
-  accumulating funds. The account statement (backlog item 1) will replace the estimate.
+- DEGIRO's account statement lists it per trade ("Transactiebelasting België"); the *Transacties* export doesn't
+  include it at all, not even in its costs. Without the account statement the report falls back to an **estimate**
+  at 0.12% / 0.35%, which misses the 1.32% of Belgian-registered accumulating funds.
 - If a foreign broker doesn't withhold it, the investor files the stock exchange tax return himself, by the last
   working day of the second month after the trade.
 

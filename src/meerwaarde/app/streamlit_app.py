@@ -70,7 +70,7 @@ with st.sidebar:
     st.caption("Profit and Belgian meerwaardebelasting across Bitvavo, DEGIRO and LYNX.")
     key = st.session_state.setdefault("uploader_key", 0)
     up = st.file_uploader("Add exports (PDF)", type=["pdf"], accept_multiple_files=True, key=f"up{key}",
-                          help="Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements (one per year).")
+                          help="Bitvavo transaction history, DEGIRO Transacties and account statement (Rekeningoverzicht), LYNX activity statements (one per year).")
     if up:
         n = save_uploads(up)
         st.session_state.uploader_key += 1
@@ -133,7 +133,7 @@ Upload the PDF exports in the sidebar. They are kept on this computer, in `"""
 | Broker | What to export |
 |---|---|
 | **Bitvavo** | The full transaction overview (*Transactieoverzicht*, all dates), as PDF. |
-| **DEGIRO** | *Transacties* for the full period since your first trade, exported as PDF. |
+| **DEGIRO** | *Transacties* and the *Rekeningoverzicht* (account statement) for the full period since your first trade, as PDF. |
 | **LYNX** | The *Activity Statement* PDF for each year you had the account, plus the current year to date. |
 
 After that, the app shows your profit per broker, the meerwaardebelasting if you sold everything today,
@@ -369,11 +369,11 @@ with tabs[4]:
                       format_func=lambda y: f"{y} (tax return {y + 1})")
     ytr = tax_year_report(rep, ry)
     st.caption(ytr.subtitle)
-    inc_tax = sum(i.tax for i in ytr.income.values())
+    inc_tax = sum(i.to_pay for i in ytr.income.values())
     tob_total = float(ytr.tob["amount_eur"].sum()) if not ytr.tob.empty else 0.0
     c = st.columns(3)
     c[0].metric("Meerwaardebelasting", money(ytr.cgt["tax"]), help="On this year's sales (and other sales on the Tax years tab)")
-    c[1].metric("Tax on dividends and interest", money(inc_tax), help="30% on what foreign brokers paid out, after the dividend exemption")
+    c[1].metric("To pay on dividends and interest", money(inc_tax), help="30% on what foreign brokers paid out, after the dividend exemption, minus Belgian tax already withheld (negative = refund)")
     c[2].metric("Stock exchange tax", money(tob_total), help="Withheld by the brokers; DEGIRO's is an estimate")
     d1, d2, _ = st.columns([1, 1, 3])
     d1.download_button("Excel", data=lambda: tax_report_xlsx(ytr), file_name=f"tax-report-{ry}.xlsx", mime=XLSX_MIME,
@@ -408,13 +408,16 @@ with tabs[4]:
         if not hh.single:
             st.markdown(f"**{name}**")
         if it.lines:
-            st.dataframe(pd.DataFrame([dict(income=CATEGORIES[l.category], broker=l.broker, gross=l.gross, foreign_tax=l.foreign_tax, net=l.net)
-                                       for l in it.lines]), hide_index=True, width="stretch", column_config={
+            st.dataframe(pd.DataFrame([dict(income=CATEGORIES[l.category], broker=l.broker, gross=l.gross, foreign_tax=l.foreign_tax,
+                                            net=l.net, be=l.be_withheld) for l in it.lines]), hide_index=True, width="stretch", column_config={
                 "income": "Income", "broker": "Broker", "gross": st.column_config.NumberColumn("Gross", format=EUR),
                 "foreign_tax": st.column_config.NumberColumn("Foreign tax", format=EUR),
-                "net": st.column_config.NumberColumn("Net (taxable base)", format=EUR)})
+                "net": st.column_config.NumberColumn("Net (taxable base)", format=EUR),
+                "be": st.column_config.NumberColumn("Belgian tax withheld", format=EUR)})
         st.caption(f"Dividend exemption used {money(it.exemption_used)} of {money(it.exemption_available)} · "
-                   f"taxable at 30% {money(it.taxable)} · tax {money(it.tax)}")
+                   f"taxable at 30% {money(it.taxable)} · tax {money(it.tax)}"
+                   + (f" · already withheld in Belgium {money(it.be_withheld)}" if abs(it.be_withheld) > 0.005 else "")
+                   + f" · to pay {money(it.to_pay)}")
 
     st.subheader("Stock exchange tax")
     st.dataframe(ytr.tob, hide_index=True, width="stretch", column_config={

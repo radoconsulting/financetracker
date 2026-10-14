@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from . import bitvavo, degiro, lynx
+from . import bitvavo, degiro, degiro_account, lynx
 from ..util import pdf_text
 
 BROKERS = ("Bitvavo", "DEGIRO", "LYNX")
@@ -20,6 +20,7 @@ class ParseResult:
     statement: object = None          # LYNX StatementInfo
     warnings: list = field(default_factory=list)
     filename: str = ""
+    account: object = None              # DEGIRO AccountInfo (account statement)
 
 
 def _open(source):
@@ -55,6 +56,16 @@ def parse_file(source, filename: str = "", broker: str | None = None) -> ParseRe
         txns, warns = bitvavo.parse(io.BytesIO(data), filename)
         return ParseResult("Bitvavo", txns, None, warns, filename)
     if broker == "DEGIRO":
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            first = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+        if degiro_account.is_account_statement(first):
+            txns, info, warns = degiro_account.parse(io.BytesIO(data), filename)
+            warns = warns + [f"DEGIRO account statement {info.period_start} – {info.period_end}: deposits "
+                             f"€{info.deposits:,.2f}, withdrawals €{info.withdrawals:,.2f}, cash now €{info.cash_eur:,.2f} "
+                             f"(DEGIRO and flatex account together), {info.trades} trades"]
+            res = ParseResult("DEGIRO", txns, None, warns, filename)
+            res.account = info
+            return res
         txns, warns = degiro.parse_text(pdf_text(io.BytesIO(data)), filename)
         return ParseResult("DEGIRO", txns, None, warns, filename)
     if broker == "LYNX":

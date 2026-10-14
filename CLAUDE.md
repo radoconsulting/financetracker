@@ -25,7 +25,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | Path | What |
 |---|---|
 | `src/meerwaarde/models.py` | Transaction, Lot, RealizedRow, Holding, IncomeRow; transaction kinds; `law_type()` |
-| `src/meerwaarde/parsers/` | `bitvavo.py` (pdfplumber tables), `degiro.py` (layout text + regex), `lynx.py` (IBKR statement, column-aware), `classify.py` (asset class guesses), `__init__.py` (detect, parse_file, combine) |
+| `src/meerwaarde/parsers/` | `bitvavo.py` (pdfplumber tables), `degiro.py` (Transacties: layout text + regex), `degiro_account.py` (Rekeningoverzicht: column-aware words), `lynx.py` (IBKR statement, column-aware), `classify.py` (asset class guesses), `__init__.py` (detect, parse_file, combine) |
 | `src/meerwaarde/engine/portfolio.py` | FIFO lots per (broker, asset); own-wallet transfers; ISIN conversions; bond redemption at par; foreign cash from LYNX statements |
 | `src/meerwaarde/engine/tax.py` | TaxRules, unit_acquisition, gain_for, max_without_tax, TaxCalculator |
 | `src/meerwaarde/engine/household.py` | Household (people, ownership shares), exemption carry-forward schedule, per-person tax |
@@ -67,7 +67,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
   gains in the same year; no carry-over of losses. Exemption €10,000 (2026), per person, plus carry-forward
   (D14). Everything tax-related is per person by ownership share; one person must give the old figures (D15).
 - Dividends/interest: 30% after foreign tax; the exemption only for class `Stock` (D16).
-- Stock exchange tax rows (`TOB`) are information only: never add them to P&L costs (D13).
+- Stock exchange tax rows (`TOB`): LYNX's are information only (already in the commission, D13); DEGIRO's
+  (`ref="separate"`) are added to the trade's costs because Transacties leaves them out (D19). Never in the tax.
 - Every price shown must carry its date and source. A user override always wins.
 - A parser change needs a synthetic test in `tests/test_parsers.py` (text in, transactions out); parsers keep
   a text/lines entry point (`degiro.parse_text`, `lynx.parse_lines`) so tests don't need PDFs.

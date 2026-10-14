@@ -18,7 +18,8 @@ INTEREST = "interest"
 WITHHOLDING = "withholding"
 FX_RESULT = "fx_result"      # realized currency result reported by the broker
 FEE = "fee"                  # standalone cost not tied to a trade
-TOB = "tob"                  # stock exchange tax reported per trade; information only (already in the trade's costs)
+TOB = "tob"                  # stock exchange tax per trade; ref="separate" when it isn't in the trade's costs yet
+REDEMPTION = "redemption"    # cash paid out for a bond at maturity (DEGIRO account statement)
 
 # Asset classes (display) -> law types (meerwaardebelasting)
 ASSET_CLASSES = ("Crypto", "ETF", "Bond ETF", "Fund", "Stock", "Bond", "Turbo", "Cash/FX", "Insurance", "Gold")
@@ -96,6 +97,7 @@ class RealizedRow:
     gross_proceeds_eur: Optional[float] = None
     lots: list = field(default_factory=list)   # consumed Lot copies (for the tax)
     note: str = ""
+    kind: str = ""                   # "" for a sale; fee / fx_result for rows that aren't a sale of an asset
 
     @property
     def pnl_eur(self) -> float:

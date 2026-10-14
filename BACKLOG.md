@@ -5,12 +5,7 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-### 1. DEGIRO account statement · M
-Read DEGIRO's *Rekeningoverzicht* export: dividends, coupons, dividend tax withheld abroad, AutoFX costs,
-deposits and withdrawals.
-- Dividends and coupons appear as income per position, like LYNX today.
-- Cash movements reconcile with the *Transacties* export (deposits − withdrawals + trades = cash balance).
-- The Bund redemption payout replaces the "redeemed at par" assumption.
+Nothing open: items 1–5 are done. Next in line: 6.
 
 ## Next
 
@@ -64,6 +59,7 @@ between ETFs (for example S&P 500 inside MSCI World inside ACWI).
 
 ## Done
 
+- 1. DEGIRO account statement · done 2026-10-14 · Rekeningoverzicht PDF: dividends, withholding, stock exchange tax (added to trade costs), interest, fees, deposits, bond payout; cash reconciles within a few euros (D18–D20).
 - 2. Dividend & interest tax · done 2026-10-14 · per year, person and broker; 30% after foreign tax; exemption for shares only. DEGIRO dividends still need item 1 (or entering them as other income).
 - 3. Excel export · done 2026-10-14 · `meerwaarde report --xlsx`, sidebar button in the app; totals are live formulas, engine results are values (docs/decisions.md D12).
 - 4. Exemption over the years · done 2026-10-14 · carry-forward (+€1,000/yr, 5 yrs, max €15,000), partner with ownership shares per broker/position, Tax years tab, profile.json (D14, D15).

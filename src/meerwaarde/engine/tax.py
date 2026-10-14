@@ -120,8 +120,8 @@ class TaxCalculator:
             if row.date.year != year or year <= r.reference_date.year:
                 continue
             lt = law_type(row.asset_class)
-            if not row.lots:                      # broker-reported currency results and fees
-                if row.note == "Network fee":
+            if not row.lots:                      # broker-reported currency results; costs don't count for the tax
+                if row.note == "Network fee" or row.kind == "fee":
                     continue
                 out.append(TaxLine(row.broker, row.asset, row.name, lt, "Sold", row.date.date(), row.qty, None, None, None,
                                    row.proceeds_eur, row.cost_eur, row.pnl_eur))

@@ -6,6 +6,8 @@
 - Dividend exemption: dividends from **shares** up to a yearly amount per person (€833 for income 2025 and 2026)
   are exempt. Distributions from funds and ETFs don't qualify. Interest has no exemption here (the savings-account
   exemption is for regulated Belgian savings deposits only).
+- Dividends of Belgian companies (ISIN BE...) had the Belgian 30% withheld at source even at a foreign broker: that
+  tax counts as already paid (a credit), so declaring them only matters to use the exemption (a refund).
 Sources: docs/domain/belgian-taxes.md.
 """
 from __future__ import annotations
@@ -21,6 +23,7 @@ CATEGORIES = {
     "shares": "Dividends from shares",
     "funds": "Distributions from funds and ETFs",
     "interest": "Interest",
+    "other": "Other income (securities lending)",
 }
 
 
@@ -42,6 +45,7 @@ class IncomeLine:
     gross: float               # before foreign tax
     foreign_tax: float         # negative = withheld abroad
     count: int = 0
+    be_withheld: float = 0.0   # negative = Belgian tax already withheld at source (Belgian companies)
 
     @property
     def net(self) -> float:
@@ -67,11 +71,21 @@ class IncomeTax:
     @property
     def taxable(self) -> float:
         return (max(0.0, self.total("shares")) - self.exemption_used + max(0.0, self.total("funds"))
-                + max(0.0, self.total("interest")))
+                + max(0.0, self.total("interest")) + max(0.0, self.total("other")))
 
     @property
     def tax(self) -> float:
+        """30% on everything taxable, before what was already withheld in Belgium."""
         return self.rate * self.taxable
+
+    @property
+    def be_withheld(self) -> float:
+        return sum(l.be_withheld for l in self.lines)
+
+    @property
+    def to_pay(self) -> float:
+        """Tax still due on the return; negative = refund (Belgian tax withheld on dividends the exemption covers)."""
+        return self.tax + self.be_withheld
 
     @property
     def foreign_tax(self) -> float:
@@ -80,7 +94,7 @@ class IncomeTax:
 
 def _category(row) -> str:
     if row.kind == INTEREST:
-        return "interest"
+        return "other" if "securities lending" in (row.name or "").lower() else "interest"
     cls = row.asset_class or ""
     if cls in SHARE_CLASSES:
         return "shares"
@@ -97,18 +111,21 @@ def income_tax(income_rows, household, year: int, rules: IncomeTaxRules | None =
     `income_rows`: IncomeRow list (portfolio.income). `other`: person -> {dividends_shares, dividends_funds, interest,
     foreign_tax} for income not in the exports (added as a broker line "Other")."""
     rules = rules or IncomeTaxRules()
-    acc = defaultdict(lambda: [0.0, 0.0, 0])        # (person, broker, category) -> [gross, foreign tax, count]
+    acc = defaultdict(lambda: [0.0, 0.0, 0, 0.0])   # (person, broker, category) -> [gross, foreign tax, count, BE tax]
     paid = defaultdict(float)
     for r in income_rows:
         if r.date.year != year or r.kind not in (DIVIDEND, INTEREST, WITHHOLDING):
             continue
         cat = _category(r)
         for pid, sh in household.share(r.broker, r.asset).items():
-            a = acc[(pid, r.broker, cat)]
-            if r.kind == WITHHOLDING:
-                a[1] += r.amount_eur * sh
-            elif r.kind == INTEREST and r.amount_eur < 0:
+            if r.kind == INTEREST and r.amount_eur < 0:
                 paid[pid] += r.amount_eur * sh
+                continue
+            a = acc[(pid, r.broker, cat)]
+            if r.kind == WITHHOLDING and (r.asset or "").startswith("BE"):
+                a[3] += r.amount_eur * sh
+            elif r.kind == WITHHOLDING:
+                a[1] += r.amount_eur * sh
             else:
                 a[0] += r.amount_eur * sh
                 a[2] += 1
@@ -123,6 +140,7 @@ def income_tax(income_rows, household, year: int, rules: IncomeTaxRules | None =
     ex = rules.exemption_for(year) if exemption is None else exemption
     out = {}
     for pid in household.ids:
-        lines = [IncomeLine(p, b, c, round(v[0], 2), round(v[1], 2), v[2]) for (p, b, c), v in sorted(acc.items()) if p == pid]
+        lines = [IncomeLine(p, b, c, round(v[0], 2), round(v[1], 2), v[2], round(v[3], 2))
+                 for (p, b, c), v in sorted(acc.items()) if p == pid]
         out[pid] = IncomeTax(pid, year, lines, ex, rules.rate, round(paid[pid], 2))
     return out

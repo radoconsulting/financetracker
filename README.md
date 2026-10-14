@@ -47,7 +47,8 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   free units. Coins deposited from elsewhere have no purchase price and count at zero cost (you get a note).
 - **DEGIRO**: a same-day swap of one ISIN into another at the same value (such as Royal Dutch Shell A into
   Shell plc) is a conversion, not a sale. A bond "sold" at 0 on its maturity date is counted as repaid at 100%.
-  DEGIRO's *Transacties* export has no dividends; those are in its account statement (not read yet).
+  The *Transacties* export has no dividends and leaves out the stock exchange tax; the account statement
+  (*Rekeningoverzicht*) supplies both, and the real payout of a bond at maturity.
 - **LYNX**: trades, dividends, interest, withholding tax, deposits, currency results and open positions are
   read from the activity statements. Amounts in other currencies are converted with the statement's own EUR
   totals. The statement that starts on 1 January 2026 also supplies the 31-12-2025 prices and exchange rate.
@@ -138,7 +139,7 @@ The app has no login. Only expose it on your own network.
 | Broker | Export |
 |---|---|
 | Bitvavo | The full transaction overview (*Transactieoverzicht*, all dates), as PDF. |
-| DEGIRO | *Transacties* for the whole period since your first trade, as PDF. |
+| DEGIRO | *Transacties* **and** the *Rekeningoverzicht* (account statement), both for the whole period since your first deposit, as PDF. The account statement adds dividends, the tax withheld on them, the Belgian stock exchange tax, interest and deposits. |
 | LYNX | The *Activity Statement* PDF for every year you had the account, plus the current year to date. |
 
 Uploading an overlapping export again is safe: rows that appear in two files are counted once.

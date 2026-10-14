@@ -50,7 +50,8 @@ def metrics() -> dict:
     out["rows"] = {f"{k[0]}|{k[1]}": n for k, n in sorted(Counter((t.broker, t.kind) for t in rep.portfolio.transactions).items())}
     out["warnings"] = len(rep.warnings)
     out["income_tax"] = {f"{r.year}|{r.person}": {k: float(getattr(r, k)) for k in ("shares_net", "funds_net", "interest_net",
-                                                                                     "foreign_tax", "taxable", "tax")}
+                                                                                     "foreign_tax", "taxable", "tax",
+                                                                                     "be_withheld", "to_pay")}
                          for r in rep.income_tax_summary().itertuples()}
     out["tob"] = {f"{y}|{r.broker}": float(r.amount_eur) for y in (2023, 2024, 2025, 2026) for r in rep.tob_summary(y).itertuples()}
     out["exemption"] = {f"{r.year}|{r.person}": {k: float(getattr(r, k)) for k in ("available", "used", "carry_out")}

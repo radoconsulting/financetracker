@@ -95,7 +95,8 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
         "return with the countries. Whether a crypto platform account (Bitvavo) must be reported is not settled: check "
         "with your adviser.",
         f"Dividends and interest: declare them as income received without Belgian withholding tax (taxed at 30%) and "
-        f"claim the dividend exemption for dividends from shares. Estimated tax: €{sum(i.tax for i in inc.values()):,.2f}.",
+        f"claim the dividend exemption for dividends from shares (also those of Belgian companies, whose 30% was "
+        f"already withheld: that gives a refund). Estimated to pay: €{sum(i.to_pay for i in inc.values()):,.2f}.",
     ]
     if year >= first:
         checklist.append(
@@ -110,7 +111,7 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
     notes = []
     if not (pd.Timestamp(today) > pd.Timestamp(year, 12, 31)):
         notes.append(f"{year} isn't over: sales, dividends and interest are counted up to {today:%d-%m-%Y}.")
-    if "DEGIRO" in brokers and not any(i.broker == "DEGIRO" for i in rep.portfolio.income):
+    if "DEGIRO" in brokers and not any(i.broker == "DEGIRO" for i in rep.portfolio.income) and not rep.portfolio.tob_separate:
         notes.append("DEGIRO's Transacties export has no dividends or interest. Add them under other income for the "
                      "year, or wait for the account statement import (backlog item 1).")
     if any(b == "Bitvavo" for b in brokers):

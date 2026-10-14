@@ -79,3 +79,19 @@ entered as other income in the profile.
 `taxreport.tax_year_report()` collects everything for one income year; `export.tax_report_xlsx` (formulas for the
 arithmetic, rates and exemptions as inputs) and `pdf_report.tax_report_pdf` (reportlab, no system dependencies)
 render it. No tax-return codes are printed for the meerwaardebelasting: they're published with the 2027 return.
+
+### D18 · DEGIRO account statement: trades stay from Transacties, the statement adds the rest (2026-10-14)
+Both exports list the trades; Transacties has the EUR value, AutoFX and costs per trade, so it stays the trade
+source and the statement's Koop/Verkoop rows are only counted. The statement adds dividends, withholding, the stock
+exchange tax, interest, fees, deposits/withdrawals and the bond payout.
+
+### D19 · DEGIRO's stock exchange tax is a purchase/sale cost (2026-10-14)
+The Transacties export leaves it out, so P&L understated costs. It is now added to the matching trade's costs
+(copies of the rows; the parsed data isn't mutated). The meerwaardebelasting is unaffected (costs are excluded).
+Regression: DEGIRO realized and unrealized profit went down (stock exchange tax, connection fees, money market fund),
+income went up (dividends, net of withholding and interest); meerwaardebelasting unchanged.
+
+### D20 · Dividends of Belgian companies: Belgian withholding is a credit (2026-10-14)
+Withholding on an ISIN starting with BE is Belgian roerende voorheffing, not foreign tax: the base stays the gross
+amount and the tax counts as paid (`to_pay` = 30% × taxable − withheld). With the exemption this produces the refund
+the return would give. Fees (exchange connection, money market fund) never enter the meerwaardebelasting.
