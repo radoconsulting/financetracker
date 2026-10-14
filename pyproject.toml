@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meerwaarde"
+version = "0.1.0"
+description = "Profit/loss across Bitvavo, DEGIRO and LYNX exports, plus the Belgian meerwaardebelasting (2026 capital gains tax) with a sell simulator."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Rado Consulting" }]
+dependencies = [
+  "pdfplumber>=0.11",
+  "pandas>=2.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.50", "altair>=5"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+meerwaarde = "meerwaarde.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+meerwaarde = ["app/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

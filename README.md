@@ -1,0 +1,117 @@
+# meerwaarde
+
+Profit and loss across **Bitvavo**, **DEGIRO** and **LYNX** exports, plus the Belgian
+**meerwaardebelasting** (the 10% capital gains tax on financial assets from 2026), with a simulator
+that tells you how much you can sell before you go over the yearly exemption.
+
+Everything runs on your own machine. Your exports never leave it; only price lookups go online
+(and you can switch those off).
+
+## What it does
+
+- **Reads your exports** (PDF): the Bitvavo transaction overview, DEGIRO *Transacties*, and LYNX
+  activity statements (one per year plus the current year to date). The broker is detected automatically.
+- **Profit and loss** per broker and per position: realized (first in, first out, after costs),
+  unrealized at the latest price, and dividends and interest.
+- **Meerwaardebelasting** for the tax year: what you already sold this year plus what you would pay if
+  you sold everything today, per asset type as the law defines them.
+- **Simulator**: enter quantities to sell (and, if you like, a different price) and see the taxable gain,
+  the tax-free room left, and for every position the largest quantity you can still sell without tax.
+
+### Rules it applies
+
+| Topic | Rule |
+|---|---|
+| Rate and exemption | 10% on the net gain of the year above €10,000 per person (2026). From 2027 unused exemption can add up to €1,000 a year, to at most €15,000; set the amount in the app. |
+| Held before 2026 | Purchase value = closing price of 31-12-2025. If you originally paid more, that price applies instead for sales until the end of 2030, but only to reduce a gain; a loss is measured from the 31-12-2025 price. |
+| Bought from 2026 | Purchase value = purchase price. First in, first out per broker. Commissions and stock exchange tax are left out. |
+| Asset types | Financial instruments, insurance contracts, crypto-assets, currency and investment gold form one regime: losses offset gains within the year, and don't carry over. |
+| Not included | The 33% regime for internal capital gains, holdings of 20% or more in a company, Reynders tax on bond funds, and income tax on staking rewards (units received in the tax year without a price count at zero cost). |
+
+### How the exports are interpreted
+
+- **Bitvavo**: crypto withdrawals are moves to your own wallet (for example a Ledger), not sales; the coins
+  keep their purchase price and coins coming back are matched to what went out. Staking and other credits are
+  free units. Coins deposited from elsewhere have no purchase price and count at zero cost (you get a note).
+- **DEGIRO**: a same-day swap of one ISIN into another at the same value (such as Royal Dutch Shell A into
+  Shell plc) is a conversion, not a sale. A bond "sold" at 0 on its maturity date is counted as repaid at 100%.
+  DEGIRO's *Transacties* export has no dividends; those are in its account statement (not read yet).
+- **LYNX**: trades, dividends, interest, withholding tax, deposits, currency results and open positions are
+  read from the activity statements. Amounts in other currencies are converted with the statement's own EUR
+  totals. The statement that starts on 1 January 2026 also supplies the 31-12-2025 prices and exchange rate.
+
+### Where prices come from
+
+For every position the app shows the price, its date and its source. In order of preference:
+
+1. **Your own price** (Prices tab, or a CSV with `asset,price_now,price_31dec`)
+2. **Broker statements** (LYNX closing prices and 31-12-2025 prices)
+3. **Online**: Bitvavo for crypto (current price, and the price at midnight on 31-12-2025), justETF for ETFs,
+   Yahoo Finance for shares (unofficial), the ECB for exchange rates
+
+Online prices are cached in `<data folder>/cache` (current prices for 6 hours). Use **Refresh prices** in
+the app to fetch them again.
+
+## Install
+
+Python 3.10 or newer.
+
+```bash
+pip install ".[app]"          # from this folder; adds the web app
+meerwaarde app                # opens http://localhost:8501
+```
+
+Uploads and your own prices are kept in `~/.local/share/meerwaarde` (change it with `--data-dir`).
+
+### Command line
+
+```bash
+meerwaarde report Volledige_geschiedenis.pdf Transactions.pdf LYNX_2023.pdf LYNX_2024.pdf LYNX_2025.pdf LYNX_2026.pdf \
+    --out results/            # writes realized.csv, holdings.csv, income.csv, cash.csv, meerwaardebelasting.csv, summary.csv
+```
+
+Options: `--prices my_prices.csv`, `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
+`--withdrawals-are-sales`, `-v` for all notes.
+
+### In a notebook
+
+```python
+from meerwaarde.report import build_report
+
+rep = build_report(["Volledige_geschiedenis.pdf", "Transactions.pdf", "LYNX_2026.pdf"])
+rep.summary()          # profit per broker (pandas DataFrame)
+rep.holdings()         # open positions with price, date and source
+rep.tax_lines()        # meerwaardebelasting per position
+```
+
+### Docker (for example on a NAS)
+
+```bash
+docker build -t meerwaarde .
+docker run -d --name meerwaarde -p 8501:8501 -v /volume1/docker/meerwaarde:/data meerwaarde
+```
+
+The app has no login. Only expose it on your own network.
+
+## Exporting from the brokers
+
+| Broker | Export |
+|---|---|
+| Bitvavo | The full transaction overview (*Transactieoverzicht*, all dates), as PDF. |
+| DEGIRO | *Transacties* for the whole period since your first trade, as PDF. |
+| LYNX | The *Activity Statement* PDF for every year you had the account, plus the current year to date. |
+
+Uploading an overlapping export again is safe: rows that appear in two files are counted once.
+
+## Tests
+
+```bash
+pip install ".[dev]"
+pytest
+```
+
+The tests use made-up data only.
+
+## Disclaimer
+
+This is a calculation tool, not tax advice. Check the results before you rely on them in a tax return.
