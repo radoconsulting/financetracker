@@ -5,14 +5,11 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–9 are done. Next in line: 10.
+Nothing open: items 1–10 are done (11 skipped for now). Next in line: 12.
 
 ## Next
 
-### 10. Scheduled refresh + alerts · M
-Refresh prices on a schedule (daily, on the NAS) and notify when something changes that matters: tax-free room
-drops below a threshold, a position moves by more than a set percentage, or a price couldn't be found.
-Notification by e-mail or a push service such as ntfy.
+Empty: pick from Later (12–15) when you're ready.
 
 ## Later
 
@@ -51,3 +48,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 7. Switch planner · done 2026-10-14 · Switch tab, `meerwaarde switch`, Excel sheet; real stock exchange tax rates, conservative yearly effect, spread plan over years; optional Gemini suggestions with your own key (D22, D23).
 - 8. Manual positions · done 2026-10-14 · Manual positions tab and `--manual` JSON: funds, tak 21/23, savings, gold as ordinary FIFO transactions under their own broker label; price now and 31-12-2025 value per position; Excel sheet; year-end harvesting skips insurance (D24). Tak 21 roerende voorheffing on early surrender not handled.
 - 9. Reynders tax · done 2026-10-15 · Reynders panel (Meerwaardebelasting tab) and `--reynders` JSON: TIS per lot, asset test or worst case; interest part out of the 10%; in the simulator, switch planner, tax report, Excel and PDF; harvesting skips subject funds; cap and deduction are settings (D25).
+- 10. Scheduled refresh + alerts · done 2026-10-15 · `meerwaarde refresh` (daily via cron/NAS task scheduler, or `--every` in a container), Alerts tab; room below threshold, price move since last alert, missing price; ntfy and SMTP with secrets from the environment; no amounts by default (D26). Not tried against a live ntfy or SMTP server.

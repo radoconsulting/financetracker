@@ -42,6 +42,10 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   provider publishes (or the fund's bond share); that part is taken out of the 10%. Enter the funds on the
   Meerwaardebelasting tab (*Reynders tax* panel) or in a JSON file for `--reynders`; the simulator, switch planner and
   yearly report include it.
+- **Scheduled refresh and alerts**: `meerwaarde refresh` fetches fresh prices for the app's data folder and sends a
+  message (ntfy push or e-mail) when the tax-free room drops below your threshold, a position moves more than a set
+  percentage, or a price can't be found. Settings on the **Alerts** tab; schedule it with cron, the NAS task
+  scheduler or `--every 24` in a container.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 
@@ -153,6 +157,39 @@ docker run -d --name meerwaarde -p 8501:8501 -v /volume1/docker/meerwaarde:/data
 ```
 
 The app has no login. Only expose it on your own network.
+
+Scheduled refresh next to the app, with docker compose (the token and password stay in the environment, never in
+`alerts.json`):
+
+```yaml
+services:
+  meerwaarde:
+    image: meerwaarde
+    ports: ["8501:8501"]
+    volumes: ["/volume1/docker/meerwaarde:/data"]
+  meerwaarde-refresh:
+    image: meerwaarde
+    command: ["meerwaarde", "refresh", "--data-dir", "/data", "--every", "24"]
+    volumes: ["/volume1/docker/meerwaarde:/data"]
+    environment:
+      MEERWAARDE_NTFY_TOKEN: ${MEERWAARDE_NTFY_TOKEN:-}
+      MEERWAARDE_SMTP_PASSWORD: ${MEERWAARDE_SMTP_PASSWORD:-}
+    healthcheck: {disable: true}
+```
+
+Or keep one container and schedule `docker exec meerwaarde meerwaarde refresh --data-dir /data` daily in the NAS
+task scheduler.
+
+### Alerts
+
+```bash
+meerwaarde refresh --dry-run     # what would be sent now; sends nothing, changes nothing
+meerwaarde refresh --test        # a test message on the channels set up on the Alerts tab
+meerwaarde refresh               # refresh, send, remember the state (run it daily)
+```
+
+Messages leave amounts out unless you switch *Include amounts* on: a topic on the public ntfy.sh server can be read
+by anyone who knows its name, so use a long random topic or your own ntfy server with a token.
 
 ## Exporting from the brokers
 

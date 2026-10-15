@@ -147,3 +147,16 @@ the switch planner counts the Reynders tax in the cost now and in each year of t
 covers the 10% only; the simulator warns when the sales also pay Reynders tax. Regression unchanged (no Reynders file
 in it).
 
+### D26 · Scheduled refresh: one-shot command, alerts on crossings and anchors, no amounts by default (2026-10-15)
+`alerts.py` + `datadir.py`. `meerwaarde refresh` is a one-shot command (cron, NAS task scheduler, Windows Task
+Scheduler) with `--every HOURS` for a container; the app doesn't schedule anything itself, so a Streamlit restart never
+loses a run. `DataDir.build()` builds the report from the data folder with the app's default settings (sidebar
+toggles aren't stored). Alerts avoid daily repeats: the room alert fires when a person's room crosses below the
+threshold (or on the first run already below it); a move alert compares with an anchor price per position (its price
+at the last alert or first sighting), so slow drifts add up and the anchor resets after an alert; a missing price
+alerts once. State in `<data dir>/alerts/state.json`, a JSON-lines log next to it. `--dry-run` and the app's preview
+send nothing and leave state and log untouched. Channels: ntfy (HTTP POST, optional bearer token) and SMTP e-mail;
+secrets only from environment variables named in `alerts.json`. Messages carry no amounts unless `include_amounts`
+(public ntfy.sh topics are readable by anyone who knows the name); position names are still in them. Send errors are
+returned and logged, never raised. Not verified against a live ntfy server or SMTP server here (both tested with fakes).
+

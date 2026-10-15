@@ -36,14 +36,15 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/reynders.py` | Reynders tax on bond funds: TIS / asset test / worst case per lot, ReyndersBook JSON, deduction from the 10% (D25) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/manual.py` | ManualBook JSON: positions no export covers (funds, tak 21/23, savings, gold) → BUY/SELL transactions, prices into the PriceBook (D24) |
+| `src/meerwaarde/alerts.py`, `datadir.py` | Scheduled refresh: data folder → report, snapshot, alert rules (room, move, missing), ntfy/SMTP, state + log (D26) |
 | `src/meerwaarde/profile.py` | TaxProfile JSON: partner, ownership, per-year exemption amounts, other sales and income |
 | `src/meerwaarde/taxreport.py` | `tax_year_report()`: everything for one income year, incl. checklist and foreign accounts |
 | `src/meerwaarde/pdf_report.py` | PDF of the yearly report (reportlab) |
 | `src/meerwaarde/prices/` | PriceBook (override > manual entry > statement > online) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
-| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
-| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `app`; `--profile`, `--manual`, `--reynders` |
+| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions, Alerts); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
+| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `refresh`, `app`; `--profile`, `--manual`, `--reynders` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
 | `docs/` | domain knowledge and decisions: read the relevant file before changing behaviour |
