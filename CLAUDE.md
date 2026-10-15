@@ -36,6 +36,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/reynders.py` | Reynders tax on bond funds: TIS / asset test / worst case per lot, ReyndersBook JSON, deduction from the 10% (D25) |
 | `src/meerwaarde/engine/performance.py` | XIRR, time-weighted return (Modified Dietz, monthly), value series, benchmark with the same flows (D27) |
 | `src/meerwaarde/engine/allocation.py` | Look-through exposure (asset class, region, country, sector, currency), top holdings, fund overlap; justETF composition, `exposure.json` overrides (D30) |
+| `src/meerwaarde/engine/redflags.py` | Fund red flags (distributing, 1.32% TOB, TER, bonds) with like-for-like alternatives (D35) |
 | `src/meerwaarde/engine/costs.py` | Fees and costs per year/broker: stock exchange tax, commissions, other fees, network fees, TER drag (D34) |
 | `src/meerwaarde/engine/networth.py` | Net worth per month: positions × price series, cash per broker rebuilt from the rows (D33) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |

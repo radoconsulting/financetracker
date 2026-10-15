@@ -53,7 +53,7 @@ def test_alternative_is_like_for_like_only():
     assert alt is None and "no comparable" in why
     alt, _ = alternative_for(None, "XX0000000009", "Some MSCI World fund")
     assert alt is not None and alt.accumulating and alt.tob_rate <= 0.0012
-    assert alternative_for(lookup(IUSA), IUSA, bond=True)[0] is None
+    assert alternative_for(None, "XX0000000008", "SOME WORLD CORP BOND ETF", bond=True)[0] is None   # no world equity fallback
 
 
 def test_red_flags_sheet():

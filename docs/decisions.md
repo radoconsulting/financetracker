@@ -240,3 +240,12 @@ for funds whose TER is in the catalog; funds without a known TER are listed. "Pe
 costs of the last 12 months + TER on today's value; × 10 for a decade, no growth or compounding (kept simple and
 conservative). Regression unchanged.
 
+### D35 · Fund red flags: facts from the broker or the catalog, like-for-like alternatives only (2026-10-15)
+`engine/redflags.py`. Per fund held (across brokers): distributing (30% on the last 12 months' dividends, the switch
+planner's per-unit method), stock exchange tax ≥ 1.32% (the rate the broker last charged, else the catalog), TER at
+least 0.10 pp above the alternative (or unknown: said so), bond exposure (class Bond ETF or marked for Reynders). The
+alternative is the cheapest accumulating 0.12% fund on the same index; a world fund only replaces a world fund; bond
+funds, regional and emerging-market funds get none unless the catalog has the same index. CSPX was added to the
+catalog as unverified (TER from iShares, 0.12% from docs/domain/belgian-taxes.md). Shown at the top of the Switch tab
+and in the Excel sheet *Red flags*. Regression unchanged.
+

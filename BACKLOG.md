@@ -11,10 +11,6 @@ Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in o
 
 Agreed on 15 October 2026 (from the feature review), in this order.
 
-### 18. Fund red flags · S
-Flag distributing funds (30% dividend tax), Belgian-registered accumulating funds (1.32% stock exchange tax), high TER
-and bond exposure (Reynders), each with a cheaper alternative from the catalog.
-
 ### 19. Dividend and cash-flow calendar · S
 Expected dividends for the next 12 months from the past payments per unit, and the tax due on them (dividend tax,
 meerwaardebelasting, Reynders) and when.
@@ -69,3 +65,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 15. Allocation look-through · done 2026-10-15 · Allocation tab, `meerwaarde allocation`, Excel sheet; asset class, region, currency (approximate), sector; look-through top holdings and fund overlap from the top 10 (lower bounds); justETF composition, own breakdown in exposure.json (D30).
 - 16. Net worth over time · done 2026-10-15 · Overview tab chart (by broker or asset class), Excel sheet with a chart; positions from the price series, cash per broker rebuilt from the rows and left out where deposits are missing (D33).
 - 17. Fees and costs dashboard · done 2026-10-15 · Costs tab, Excel sheet; stock exchange tax, commissions and conversion, other fees, network fees and TER drag per year and broker; yearly level today and over 10 years (D34).
+- 18. Fund red flags · done 2026-10-15 · top of the Switch tab, Excel sheet; distributing, 1.32% stock exchange tax, TER above the alternative, bond funds; like-for-like alternatives only; CSPX added to the catalog as unverified (D35).
