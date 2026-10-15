@@ -49,7 +49,8 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Manual positions", "Prices", "How calculated")
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Manual positions", "Prices",
+          "How calculated")
 
 
 @dataclass
@@ -278,6 +279,30 @@ def _allocation_sheet(ws, rep: Report, al) -> None:
     for n in al.notes:
         _write(ws, row, 1, n, NOTE)
         row += 1
+
+
+def _networth_sheet(ws, rep: Report, nw) -> None:
+    """Month-end values per broker with a total formula, and a line chart of the total."""
+    from openpyxl.chart import LineChart, Reference
+    df = rep.networth_table(nw, "broker")
+    if df.empty:
+        _write(ws, 1, 1, "No data.", NOTE)
+        return
+    keys = [c for c in df.columns if c not in ("date", "total")]
+    cols = [Col("date", "Month end", DATE, 12)] + [Col(k, f"{k} (€)", EUR, 15) for k in keys]
+    letters = [get_column_letter(i) for i in range(2, len(keys) + 2)]
+    cols.append(Col("total", "Total (€)", EUR, 16, f"=SUM({letters[0]}{{r}}:{letters[-1]}{{r}})" if letters else None))
+    first, last, _L = _table(ws, cols, _records(df))
+    chart = LineChart()
+    chart.title, chart.height, chart.width = "Net worth", 9, 22
+    chart.y_axis.numFmt = "#,##0"
+    chart.add_data(Reference(ws, min_col=len(cols), min_row=1, max_row=last), titles_from_data=True)
+    chart.set_categories(Reference(ws, min_col=1, min_row=first, max_row=last))
+    ws.add_chart(chart, f"{get_column_letter(len(cols) + 2)}2")
+    r = last + 2
+    for n in nw.notes:
+        _write(ws, r, 1, n, NOTE)
+        r += 1
 
 
 REYNDERS_NOTES = [
@@ -774,7 +799,7 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 # ---------------------------------------------------------------- workbook
 def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None, perf=None,
-                   alloc=None) -> Workbook:
+                   alloc=None, nw=None) -> Workbook:
     from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
     plan = harvest if harvest is not None else plan_harvest(rep)
@@ -798,6 +823,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
     _performance_sheet(sheets["Performance"], rep, perf if perf is not None else rep.performance())
     _allocation_sheet(sheets["Allocation"], rep, alloc if alloc is not None else rep.allocation())
+    _networth_sheet(sheets["Net worth"], rep, nw if nw is not None else rep.networth())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
@@ -820,10 +846,10 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
 
 
 def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None,
-            switch=None, perf=None, alloc=None):
+            switch=None, perf=None, alloc=None, nw=None):
     """Write the workbook to `target` and return its path, or return the bytes when no target is given.
     `switch`: (sources, cases, plans, horizon) from the switch planner; default: distributing ETFs into world ETFs."""
-    wb = build_workbook(rep, simulation, harvest, switch, perf, alloc)
+    wb = build_workbook(rep, simulation, harvest, switch, perf, alloc, nw)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)

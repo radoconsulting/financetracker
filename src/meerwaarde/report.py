@@ -10,6 +10,7 @@ from .engine.household import ExemptionYear, exemption_schedule, summarize_peopl
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
 from .engine.allocation import Allocation, allocation
+from .engine.networth import NetWorth, networth
 from .engine.performance import DEFAULT_BENCHMARK, Performance, performance
 from .engine.reynders import Reynders, ReyndersBook, ReyndersRules
 from .engine.tax import TaxCalculator, TaxRules
@@ -273,6 +274,27 @@ class Report:
         rows = [dict(date=p.on, value=round(p.value, 2), invested=round(p.invested, 2),
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
+
+    # ---------- net worth over time ----------
+    def networth(self, fetch: bool | None = None) -> NetWorth:
+        cache = self.__dict__.setdefault("_nw", {})
+        if fetch not in cache:
+            cache[fetch] = networth(self, fetch)
+        return cache[fetch]
+
+    @staticmethod
+    def networth_table(nw: NetWorth, by: str = "broker") -> pd.DataFrame:
+        """Wide table: one row per month-end, one column per broker (or asset class), and the total."""
+        groups = nw.by_broker if by == "broker" else nw.by_class
+        rows = []
+        for i, d in enumerate(nw.dates):
+            row = {"date": d}
+            for k, v in sorted(groups.items()):
+                if any(abs(x) > 0.5 for x in v):
+                    row[k] = round(v[i], 2)
+            row["total"] = round(nw.total[i], 2)
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     # ---------- allocation look-through ----------
     def allocation(self, overrides: dict | None = None, fetch: bool | None = None) -> Allocation:

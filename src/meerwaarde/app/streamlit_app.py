@@ -444,6 +444,22 @@ with tabs[0]:
             for w in rep.warnings:
                 st.markdown(f"- {w}")
 
+nw = None
+with tabs[0]:
+    st.subheader("Net worth over time")
+    split = st.radio("Split by", ["Broker", "Asset class"], horizontal=True, key="nw-split", label_visibility="collapsed")
+    with st.spinner("Building the history…"):
+        nw = rep.networth()
+    nwt = rep.networth_table(nw, "broker" if split == "Broker" else "class")
+    if not nwt.empty:
+        long = nwt.drop(columns=["total"]).melt("date", var_name="part", value_name="eur")
+        st.altair_chart(alt.Chart(long).mark_area(interpolate="monotone").encode(
+            x=alt.X("date:T", title=None), y=alt.Y("eur:Q", stack=True, title="€", axis=alt.Axis(format=",.0f")),
+            color=alt.Color("part:N", title=None, legend=alt.Legend(orient="top")),
+            tooltip=[alt.Tooltip("date:T"), "part:N", alt.Tooltip("eur:Q", format=",.0f")]), width="stretch")
+        for n in nw.notes:
+            st.caption(n)
+
 # ---------------------------------------------------------------- positions
 with tabs[1]:
     st.subheader("Open positions")
@@ -1258,7 +1274,7 @@ with tabs[13]:
 with st.sidebar:
     st.subheader("Export")
     sw_result = (sw_srcs, sw_cases, sw_plans, sw_horizon) if sw_srcs and sw_targets else None
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf, alloc=alloc),
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf, alloc=alloc, nw=nw),
                        file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
