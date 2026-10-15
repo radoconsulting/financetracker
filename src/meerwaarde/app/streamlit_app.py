@@ -283,7 +283,7 @@ def reynders_panel():
         for a in assets:
             f = reynders_book.funds.get(a)
             h = fund_like.get(a)
-            rows.append(dict(asset=a, name=h.name if h else "", subject=bool(f.subject) if f else False,
+            rows.append(dict(asset=a, name=h.name if h else "", subject=bool(f.subject) if f else bool(h and h.asset_class == "Bond ETF"),
                              currency=f.currency if f else "EUR",
                              debt_pct=(f.debt_pct * 100 if f and f.debt_pct is not None else None),
                              source=f.source if f else "", note=f.note if f else ""))
