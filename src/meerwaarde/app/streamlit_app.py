@@ -377,7 +377,7 @@ def reynders_panel():
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance"])
+                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance", "Allocation"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -1184,11 +1184,73 @@ with tabs[12]:
                 st.dataframe(pd.DataFrame([dict(asset=a, source=v) for a, v in sorted(perf.sources.items())]),
                              hide_index=True, width="stretch")
 
+# ---------------------------------------------------------------- allocation
+alloc = None
+EXPOSURE_JSON = DATA / "exposure.json"
+with tabs[13]:
+    from meerwaarde.engine.allocation import load_overrides
+    st.subheader("Allocation, looking through your funds")
+    st.caption("What you own underneath: funds are split by the countries and sectors they hold (justETF: the 4 "
+               "largest, the rest in 'Other'), shares count for their own country. Overlap and the look-through holdings "
+               "use each fund's top 10, so they are lower bounds.")
+    try:
+        overrides = load_overrides(EXPOSURE_JSON)
+    except ValueError as e:
+        overrides = {}
+        st.error(f"exposure.json can't be read: {e}")
+    with st.spinner("Looking up fund compositions…"):
+        alloc = rep.allocation(overrides)
+    if not alloc.positions:
+        st.info("No positions with a price.")
+    else:
+        dims = {"asset_class": "Asset class", "region": "Region", "currency": "Currency (approximate)", "sector": "Sector"}
+        cols = st.columns(2)
+        for i, (dim, title) in enumerate(dims.items()):
+            t = rep.allocation_table(alloc, dim)
+            with cols[i % 2]:
+                st.markdown(f"**{title}**")
+                st.altair_chart(alt.Chart(t.head(10)).mark_bar(cornerRadius=3).encode(
+                    x=alt.X("value_eur:Q", title="€", axis=alt.Axis(format=",.0f")),
+                    y=alt.Y("name:N", sort="-x", title=None),
+                    tooltip=["name:N", alt.Tooltip("value_eur:Q", format=",.0f", title="€"),
+                             alt.Tooltip("share:Q", format=".1%")]).properties(height=34 * min(len(t), 10) + 20),
+                    width="stretch")
+        st.markdown("**Largest holdings through everything you own**")
+        st.dataframe(rep.look_through_table(alloc), hide_index=True, width="stretch", column_config={
+            "value_eur": st.column_config.NumberColumn("Value", format=EUR),
+            "share": st.column_config.NumberColumn("Share", format="percent"), "via": "Through"})
+        ov = rep.overlap_table(alloc)
+        if not ov.empty:
+            st.markdown("**Overlap between your funds** (shared top-10 holdings)")
+            st.dataframe(ov, hide_index=True, width="stretch", column_config={
+                "fund_a": "Fund", "fund_b": "Fund", "overlap": st.column_config.NumberColumn("Overlap", format="percent"),
+                "shared": "Shared holdings"})
+        with st.expander("Per position: where the breakdown comes from"):
+            st.dataframe(pd.DataFrame(alloc.positions), hide_index=True, width="stretch",
+                         column_config={"value": st.column_config.NumberColumn("Value", format=EUR)})
+        for n in alloc.notes:
+            st.caption(n)
+        with st.expander("Your own breakdown for a fund (exposure.json)"):
+            st.caption('For a fund justETF does not cover, or to correct it. Per ISIN, for example: {"XX0000000000": '
+                       '{"asset_class": {"Equity": 60, "Bonds": 40}, "countries": {"United States": 55, "Germany": 45}, '
+                       '"sectors": {"Technology": 30, "Other": 70}}}. Weights are scaled to 100%.')
+            txt = st.text_area("exposure.json", value=EXPOSURE_JSON.read_text(encoding="utf-8") if EXPOSURE_JSON.exists() else "{}",
+                               height=160, key="exposure-json")
+            if st.button("Save breakdown"):
+                try:
+                    json.loads(txt or "{}")
+                except ValueError as e:
+                    st.error(f"Not valid JSON: {e}")
+                else:
+                    EXPOSURE_JSON.write_text(txt or "{}", encoding="utf-8")
+                    st.toast("Saved")
+                    st.rerun()
+
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
     st.subheader("Export")
     sw_result = (sw_srcs, sw_cases, sw_plans, sw_horizon) if sw_srcs and sw_targets else None
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf),
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf, alloc=alloc),
                        file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
