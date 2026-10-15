@@ -168,7 +168,8 @@ def send_ntfy(settings: NtfySettings, title: str, message: str, post=None, env=o
     if post is None:
         import requests
         post = requests.post
-    headers = {"Title": title.encode("utf-8"), "Tags": "chart_with_upwards_trend"}
+    # HTTP headers are latin-1: characters outside it become '?' in the title (the body is UTF-8)
+    headers = {"Title": title.encode("latin-1", "replace").decode("latin-1"), "Tags": "chart_with_upwards_trend"}
     token = env.get(settings.token_env or "")
     if token:
         headers["Authorization"] = f"Bearer {token}"
