@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html as htmlmod
 import io
 import json
 import os
+import re
 import time
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -20,6 +22,7 @@ import requests
 UA = {"User-Agent": "Mozilla/5.0 (meerwaarde portfolio tool)", "Accept": "application/json,text/plain,*/*"}
 NOW_TTL = 6 * 3600            # current prices: refresh after 6 hours
 HIST_TTL = 365 * 24 * 3600    # historical prices don't change
+PROFILE_TTL = 7 * 24 * 3600   # fund composition changes monthly
 SERIES_TTL = 24 * 3600        # daily series up to today (performance): the key holds the end date, so one fetch a day
 
 
@@ -112,6 +115,12 @@ class Fetcher:
         data = self._get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}", HIST_TTL,
                          params={"period1": p1, "period2": p2, "interval": "1d"})
         return parse_yahoo_at(data, day)
+
+    # ---------- fund composition (allocation, backlog item 15) ----------
+    def justetf_profile(self, isin: str) -> dict | None:
+        """Top holdings, countries and sectors from the justETF profile page (HTML; cached for a week)."""
+        raw = self._get("https://www.justetf.com/en/etf-profile.html", PROFILE_TTL, binary=True, params={"isin": isin})
+        return parse_justetf_profile(raw.decode("utf-8", errors="replace"))
 
     # ---------- daily series (performance, backlog item 14) ----------
     def bitvavo_series(self, coin: str, start: date, end: date) -> dict[date, float]:
@@ -256,6 +265,39 @@ def parse_yahoo_series(data):
         return out, res["meta"].get("currency", "USD")
     except (KeyError, IndexError, TypeError, ValueError):
         return None
+
+
+def _pct(txt: str) -> float | None:
+    m = re.search(r"(-?[\d.,]+)\s*%", txt or "")
+    return float(m.group(1).replace(",", "")) / 100 if m else None
+
+
+def parse_justetf_profile(html: str) -> dict | None:
+    """{'top': [(isin, name, weight)], 'countries': {name: weight}, 'sectors': {name: weight}, 'holdings': n,
+    'top_weight': w, 'as_of': 'dd/mm/yyyy'} from the profile page; None when the page has no holdings section."""
+    if "etf-holdings_" not in html:
+        return None
+    top = []
+    for m in re.finditer(r'data-testid="etf-holdings_top-holdings_row"(.*?)</tr>', html, re.S):
+        row = m.group(1)
+        isin = re.search(r'href="/[a-z]{2}/stock-profiles/([A-Z]{2}[A-Z0-9]{9}\d)"', row)
+        name = re.search(r'title="([^"]+)"', row) or re.search(r"<span>([^<]+)</span>", row)
+        w = re.search(r'top-holdings_value_percentage">([^<]+)<', row)
+        if name and w:
+            top.append((isin.group(1) if isin else "", htmlmod.unescape(name.group(1)).strip(), _pct(w.group(1))))
+
+    def table(kind):
+        out = {}
+        for m in re.finditer(rf'tl_etf-holdings_{kind}_value_name">([^<]+)</td>.*?{kind}_value_percentage">([^<]+)<', html, re.S):
+            out[htmlmod.unescape(m.group(1)).strip()] = _pct(m.group(2))
+        return out
+
+    count = re.search(r'top-holdings_count">\s*out of ([\d,.]+)', html)
+    tw = re.search(r'top-holdings_weight">([^<]+)<', html)
+    as_of = re.search(r'holdings_reference-date">\s*As of ([^<]+)<', html)
+    return dict(top=top, countries=table("countries"), sectors=table("sectors"),
+                holdings=int(count.group(1).replace(",", "").replace(".", "")) if count else None,
+                top_weight=_pct(tw.group(1)) if tw else None, as_of=as_of.group(1).strip() if as_of else "")
 
 
 def parse_ecb_hist(raw: bytes) -> dict:
