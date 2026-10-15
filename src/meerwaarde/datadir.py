@@ -29,9 +29,17 @@ class DataDir:
     cache = property(lambda self: self.root / "cache")
     alerts = property(lambda self: self.root / "alerts.json")
     alerts_dir = property(lambda self: self.root / "alerts")
+    inbox = property(lambda self: self.root / "inbox")
+    csv_formats = property(lambda self: self.root / "csv_formats.json")
 
-    def pdfs(self) -> list[Path]:
-        return sorted(self.uploads.glob("*.pdf"), key=lambda p: p.name.lower()) if self.uploads.exists() else []
+    def exports(self) -> list[Path]:
+        """Uploaded exports and the files in the inbox folder (PDF and CSV)."""
+        found = [p for folder in (self.uploads, self.inbox) if folder.exists() for ext in ("*.pdf", "*.csv")
+                 for p in folder.glob(ext)]
+        return sorted(found, key=lambda p: (p.parent != self.uploads, p.name.lower()))
+
+    def pdfs(self) -> list[Path]:          # kept for callers from before CSV support
+        return self.exports()
 
     def build(self, fetch: bool = True, year: int | None = None, today: date | None = None):
         """The report the app shows with its default settings."""
@@ -41,9 +49,11 @@ class DataDir:
         from .parsers import parse_file
         from .profile import TaxProfile
         from .report import build_report
+        from .parsers import mapped
         from .sync import SyncStore
+        mapped.load(self.csv_formats)
         parsed, warnings = [], []
-        for p in self.pdfs():
+        for p in self.exports():
             try:
                 parsed.append(parse_file(p, filename=p.name.split("__", 1)[-1]))
             except Exception as e:  # one unreadable file must not stop the refresh

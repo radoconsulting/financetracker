@@ -34,6 +34,9 @@ def _build(a):
         sys.exit(f"File not found: {', '.join(missing)}")
     if not files and not a.manual:
         sys.exit("Give at least one PDF export or a --manual file")
+    if a.csv_formats:
+        from .parsers import mapped
+        mapped.load(a.csv_formats)
     profile = TaxProfile.load(a.profile) if a.profile else TaxProfile()
     rules = TaxRules(year=a.year, use_original_if_higher=not a.no_original_price)
     rules.exemption = a.exemption if a.exemption is not None else profile.exemption_rules().base_for(a.year)
@@ -349,7 +352,9 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(x):
-        x.add_argument("files", nargs="*", help="PDF exports (Bitvavo transaction history, DEGIRO Transacties, LYNX activity statements)")
+        x.add_argument("files", nargs="*", help="exports: PDF (Bitvavo, DEGIRO Transacties and Rekeningoverzicht, LYNX activity "
+                                                "statements) or CSV (DEGIRO, Bitvavo, or a format in --csv-formats)")
+        x.add_argument("--csv-formats", help="CSV formats you mapped (the app keeps them in its data folder as csv_formats.json)")
         x.add_argument("--profile", help="tax profile JSON: partner, ownership, other sales and income, exemptions per year "
                                          "(the app keeps it in its data folder as profile.json)")
         x.add_argument("--manual", help="JSON with positions no export covers: funds, tak 21/23 policies, savings, gold "

@@ -26,7 +26,7 @@ from meerwaarde.sync import SyncStore, load_secrets, sync as run_sync
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.manual import ManualBook, ManualPosition, ManualTrade, asset_code
 from meerwaarde.models import ASSET_CLASSES, LAW_TYPES, law_type
-from meerwaarde.parsers import combine, parse_file
+from meerwaarde.parsers import combine, mapped, parse_file
 from meerwaarde.pdf_report import tax_report_pdf
 from meerwaarde.prices import PriceBook
 from meerwaarde.prices.fetch import Fetcher
@@ -44,7 +44,11 @@ FUNDS_JSON = DATA / "funds.json"
 MANUAL_JSON = DATA / "manual.json"
 REYNDERS_JSON = DATA / "reynders.json"
 CACHE = DATA / "cache"
+INBOX = DATA / "inbox"
+CSV_FORMATS = DATA / "csv_formats.json"
 UPLOADS.mkdir(parents=True, exist_ok=True)
+INBOX.mkdir(parents=True, exist_ok=True)
+mapped.load(CSV_FORMATS)
 
 EUR = "euro"
 LAW_NAMES = {k: v[0] for k, v in LAW_TYPES.items()}
@@ -52,12 +56,19 @@ LAW_NAMES = {k: v[0] for k, v in LAW_TYPES.items()}
 
 # ---------------------------------------------------------------- data loading
 @st.cache_data(show_spinner=False)
-def parse_cached(digest: str, data: bytes, name: str):
+def parse_cached(digest: str, data: bytes, name: str, formats: str = ""):
+    mapped.load(CSV_FORMATS)
     return parse_file(data, filename=name)
 
 
+def formats_key() -> str:
+    return hashlib.sha1(CSV_FORMATS.read_bytes()).hexdigest() if CSV_FORMATS.exists() else ""
+
+
 def stored_files():
-    return sorted(UPLOADS.glob("*.pdf"), key=lambda p: p.name.lower())
+    """Uploads, then the inbox folder (files you save there yourself, e.g. a monthly DEGIRO CSV)."""
+    found = [p for folder in (UPLOADS, INBOX) for ext in ("*.pdf", "*.csv") for p in folder.glob(ext)]
+    return sorted(found, key=lambda p: (p.parent != UPLOADS, p.name.lower()))
 
 
 def save_uploads(files):
@@ -82,8 +93,10 @@ with st.sidebar:
     st.title("Meerwaarde")
     st.caption("Profit and Belgian meerwaardebelasting across Bitvavo, DEGIRO and LYNX.")
     key = st.session_state.setdefault("uploader_key", 0)
-    up = st.file_uploader("Add exports (PDF)", type=["pdf"], accept_multiple_files=True, key=f"up{key}",
-                          help="Bitvavo transaction history, DEGIRO Transacties and account statement (Rekeningoverzicht), LYNX activity statements (one per year).")
+    up = st.file_uploader("Add exports (PDF or CSV)", type=["pdf", "csv"], accept_multiple_files=True, key=f"up{key}",
+                          help="Bitvavo transaction history (PDF or CSV), DEGIRO Transacties and Rekeningoverzicht (PDF or CSV), "
+                               "LYNX activity statements (one per year), or a CSV format you mapped on the Data tab. Files you "
+                               f"save in {INBOX} are read too.")
     if up:
         n = save_uploads(up)
         st.session_state.uploader_key += 1
@@ -96,7 +109,7 @@ with st.sidebar:
         data = p.read_bytes()
         try:
             with st.spinner(f"Reading {display_name(p)}…"):
-                parsed.append((p, parse_cached(hashlib.sha1(data).hexdigest(), data, display_name(p))))
+                parsed.append((p, parse_cached(hashlib.sha1(data).hexdigest(), data, display_name(p), formats_key())))
         except Exception as e:  # keep the app usable when one file can't be read
             failed.append((p, str(e)))
 
@@ -107,7 +120,8 @@ with st.sidebar:
             period = ""
             if r.statement is not None and r.statement.period_end:
                 period = f" · {r.statement.period_start:%d-%m-%Y} – {r.statement.period_end:%d-%m-%Y}"
-            c1.markdown(f"**{r.broker}** · {display_name(p)}  \n<small>{len(r.transactions)} rows{period}</small>", unsafe_allow_html=True)
+            where = " · inbox" if p.parent == INBOX else ""
+            c1.markdown(f"**{r.broker}** · {display_name(p)}  \n<small>{len(r.transactions)} rows{period}{where}</small>", unsafe_allow_html=True)
             if c2.button("✕", key=f"rm-{p.name}", help="Remove this file"):
                 p.unlink()
                 st.rerun()
@@ -256,7 +270,7 @@ Upload the PDF exports in the sidebar. They are kept on this computer, in `"""
 | Broker | What to export |
 |---|---|
 | **Bitvavo** | The full transaction overview (*Transactieoverzicht*, all dates), as PDF. |
-| **DEGIRO** | *Transacties* and the *Rekeningoverzicht* (account statement) for the full period since your first trade, as PDF. |
+| **DEGIRO** | *Transacties* and the *Rekeningoverzicht* (account statement) for the full period since your first trade, as PDF or CSV. Later exports (for example every month, as CSV) can go straight into the inbox folder. |
 | **LYNX** | The *Activity Statement* PDF for each year you had the account, plus the current year to date. |
 
 After that, the app shows your profit per broker, the meerwaardebelasting if you sold everything today,
@@ -965,6 +979,67 @@ with tabs[9]:
         st.dataframe(pd.DataFrame([dict(file=s.source, start=s.period_start, end=s.period_end, positions=len(s.positions),
                                         dividends=s.nav.get("Dividends"), ending_value=s.nav.get("Ending Value")) for s in statements]),
                      hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------- CSV formats (Data tab)
+with tabs[9]:
+    st.subheader("CSV formats of other brokers")
+    st.caption("DEGIRO and Bitvavo CSV exports are recognised by themselves. For another broker (Bolero, Saxo, Keytrade, "
+               "…), upload one of its CSV exports here and say once which column holds what; files with the same header "
+               "are then read automatically.")
+    for f in list(mapped.FORMATS):
+        c1, c2 = st.columns([5, 1])
+        c1.markdown(f"**{f.name}** · broker *{f.broker}* · {len(f.header)} columns · types: "
+                    + (", ".join(f"{k} → {v}" for k, v in f.types.items()) or "from the sign of the quantity"))
+        if c2.button("Remove", key=f"fmt-rm-{f.name}"):
+            mapped.save(CSV_FORMATS, [x for x in mapped.FORMATS if x.name != f.name])
+            st.cache_data.clear()
+            st.rerun()
+    sample = st.file_uploader("CSV export to map", type=["csv"], key="fmt-sample")
+    if sample is not None:
+        from meerwaarde.parsers import decode
+        text = decode(sample.getvalue())
+        header, delim, preview = mapped.sniff(text)
+        st.dataframe(pd.DataFrame(preview, columns=header[:max(len(r) for r in preview)] if preview else header),
+                     hide_index=True, width="stretch")
+        with st.form("fmt-form"):
+            f1, f2, f3, f4 = st.columns(4)
+            fname = f1.text_input("Name of this format", value=sample.name.rsplit(".", 1)[0])
+            fbroker = f2.text_input("Broker", placeholder="Bolero")
+            decimal = f3.selectbox("Decimal sign", [",", "."])
+            datefmt = f4.selectbox("Date format", ["%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y", "%m/%d/%Y"],
+                                   format_func=lambda x: x.replace("%d", "dd").replace("%m", "mm").replace("%Y", "yyyy"))
+            opts = [""] + header
+            labels = dict(date="Date *", time="Time", type="Type of transaction", isin="ISIN *", name="Product name",
+                          qty="Quantity", price="Price per unit", currency="Currency", fx="Exchange rate",
+                          costs="Costs / commission", amount="Amount (dividends, fees, cash)", amount_eur="Amount in EUR")
+            cols, grid = {}, st.columns(4)
+            for i, (k, lab) in enumerate(labels.items()):
+                cols[k] = grid[i % 4].selectbox(lab, opts, key=f"fmt-col-{k}")
+            inverted = st.checkbox("The exchange rate is units per EUR (like EUR/USD 1.08), not EUR per unit")
+            types_txt = st.text_area("Values in the type column, one per line as value = buy / sell / dividend / "
+                                     "withholding / interest / fee / deposit / withdrawal",
+                                     placeholder="Aankoop = buy\nVerkoop = sell\nDividend = dividend")
+            if st.form_submit_button("Save this format"):
+                types = {}
+                for line in types_txt.splitlines():
+                    if "=" in line:
+                        a, b = (x.strip() for x in line.split("=", 1))
+                        if b.lower() in mapped.KINDS:
+                            types[a] = b.lower()
+                if not (fname and fbroker and cols["date"] and (cols["isin"] or cols["amount"])):
+                    st.error("A name, a broker, the date column and an ISIN or amount column are needed.")
+                else:
+                    fmt = mapped.CsvFormat(fname, fbroker.strip(), header, {k: v for k, v in cols.items() if v}, delim,
+                                           decimal, datefmt, types, inverted)
+                    try:
+                        rows, warns = mapped.parse_text(text, fmt, sample.name)
+                    except Exception as e:  # show the problem instead of saving a broken format
+                        st.error(f"This mapping doesn't read the file: {e}")
+                    else:
+                        mapped.save(CSV_FORMATS, [x for x in mapped.FORMATS if x.name != fname] + [fmt])
+                        st.cache_data.clear()
+                        st.success(f"Saved: {len(rows)} rows read from the sample" + (f", {len(warns)} notes" if warns else "")
+                                   + ". Upload the file in the sidebar (or put it in the inbox) to use it.")
 
 # ---------------------------------------------------------------- manual positions
 with tabs[10]:
