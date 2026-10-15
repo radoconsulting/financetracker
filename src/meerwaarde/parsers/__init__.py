@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from . import bitvavo, degiro, degiro_account, degiro_csv, ibkr_history, lynx
+from . import bitvavo, degiro, degiro_account, degiro_csv, ibkr_history, lynx, lynx_annual
 from ..util import pdf_text
 
 BROKERS = ("Bitvavo", "DEGIRO", "LYNX")
@@ -22,6 +22,7 @@ class ParseResult:
     filename: str = ""
     account: object = None              # DEGIRO AccountInfo (account statement)
     supplement: bool = False            # only counts where the main exports don't reach (LYNX Transaction History)
+    overview: object = None             # LYNX Jaaroverzicht: a check for the tax report, no transactions (D32)
 
 
 def _open(source):
@@ -86,6 +87,12 @@ def parse_file(source, filename: str = "", broker: str | None = None) -> ParseRe
         return parse_csv(decode(data), filename)
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         first_page = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+        if not first_page.strip() and len(pdf.pages) > 1:     # a cover page with only a logo (LYNX Jaaroverzicht)
+            first_page = pdf.pages[1].extract_text() or ""
+    if lynx_annual.is_annual_overview(first_page):
+        ov = lynx_annual.parse(io.BytesIO(data), filename)
+        return ParseResult("LYNX", [], None, [f"{filename}: LYNX Jaaroverzicht {ov.year}, used as a check in the tax "
+                                              "report (its income is already in the statements)"], filename, overview=ov)
     if ibkr_history.is_transaction_history(first_page):
         txns, warns = ibkr_history.parse(io.BytesIO(data), filename)
         return ParseResult("LYNX", txns, None, warns, filename, supplement=True)

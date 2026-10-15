@@ -318,3 +318,64 @@ def test_transaction_history_detection():
     assert is_transaction_history("Transaction History\nAugust 25, 2023 - October 14, 2026\nDate Account Description "
                                   "Transaction Type Symbol Quantity Price Price Currency Gross Amount Commission Net Amount")
     assert not is_transaction_history("Activity Statement\nInteractive Brokers")
+
+
+# ---------------------------------------------------------------- LYNX Jaaroverzicht (annual tax overview)
+ANNUAL_TEXT = """Gegevens Overzicht
+Periode 01/01/2025 - 31/12/2025 Ontvangen bruto dividenden buiten België €100.00
+Ontvangen bruto dividenden België €0.00
+Betaalde dividendbelasting België €0.00
+Betaalde dividendbelasting buiten België €0.00
+Ontvangen interest België €0.00
+Ontvangen interest buiten België €0.80
+Vermogensbestanddelen
+1444-11 €100.80
+CASH €10.00 €20.00 Inkomsten van kapitalen
+AANDELEN €1,000.00 €2,500.00
+TOTAAL €1,010.00 €2,520.00
+Ontvangen dividenden buiten België
+Datum Omschrijving Bruto Dividend Ingehouden belasting Dividend in EUR Belasting in EUR Netto dividend in EUR
+Mar 27, 2025 ACME WORLD ETF $110.00 $0.00 €100.00 €0.00 €100.00
+Totaal: €100.00 -€0.20 €99.80
+Rente overzicht
+Feb 5, 2025 EUR CREDIT INT FOR JAN-2025 €1.00 €1.00
+Ingehouden belasting interesten
+Feb 5, 2025 WITHHOLDING @ 20% ON CREDIT INT FOR JAN-2025 -€0.20 -€0.20
+"""
+
+
+def test_lynx_annual_overview_text():
+    from meerwaarde.parsers.lynx_annual import is_annual_overview, parse_text
+    assert is_annual_overview(ANNUAL_TEXT)
+    ov = parse_text(ANNUAL_TEXT, "jaaroverzicht.pdf")
+    assert ov.year == 2025 and ov.code_1444 == 100.8
+    assert ov.totals["dividends_foreign"] == 100.0 and ov.totals["dividends_be"] == 0.0 and ov.totals["interest_foreign"] == 0.8
+    assert ov.values["AANDELEN"] == (1000.0, 2500.0)
+    assert ov.dividends == [(date(2025, 3, 27), "ACME WORLD ETF", 110.0, "USD", 100.0, 0.0, 100.0)]
+    assert ov.interest == [(date(2025, 2, 5), "EUR CREDIT INT FOR JAN-2025", 1.0)]
+    assert ov.interest_tax[0][2] == -0.2
+
+
+def test_annual_overview_checks_in_the_report():
+    from meerwaarde.engine.portfolio import Portfolio
+    from meerwaarde.engine.tax import TaxCalculator, TaxRules
+    from meerwaarde.models import BUY, DIVIDEND, INTEREST, WITHHOLDING, Transaction
+    from meerwaarde.parsers.lynx_annual import parse_text
+    from meerwaarde.prices import PriceBook
+    from meerwaarde.report import Report
+    txns = [Transaction("LYNX", datetime(2025, 1, 2), BUY, "XX0000000001", name="ACME WORLD ETF", asset_class="ETF", qty=25,
+                        gross_eur=2000, total_eur=-2000),
+            Transaction("LYNX", datetime(2025, 3, 27), DIVIDEND, "XX0000000001", amount_eur=100.0),
+            Transaction("LYNX", datetime(2025, 2, 5), INTEREST, "EUR", asset_class="Cash/FX", amount_eur=1.0),
+            Transaction("LYNX", datetime(2025, 2, 5), WITHHOLDING, "EUR", asset_class="Cash/FX", amount_eur=-0.2)]
+    pf = Portfolio(txns)
+    pb = PriceBook(fetch=False, today=date(2026, 3, 1))
+    pb.set_override("XX0000000001", now=110.0, reference=100.0)
+    rep = Report(pf, pb, TaxCalculator(pf, pb, TaxRules(year=2025), today=date(2026, 3, 1)), [],
+                 overviews=[parse_text(ANNUAL_TEXT)])
+    checks = rep.overview_checks(2025).set_index("item")
+    assert checks.loc["Gross dividends", "difference"] == 0.0
+    assert checks.loc["Interest after tax withheld", "app_eur"] == 0.8
+    assert checks.loc["Code 1444-11 (dividends + interest)", "difference"] == 0.0
+    assert checks.loc["Value of the securities on 31-12-2025", "app_eur"] == 2500.0
+    assert rep.overview_checks(2024).empty

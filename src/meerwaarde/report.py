@@ -76,6 +76,7 @@ class Report:
     warnings: list = field(default_factory=list)
     profile: TaxProfile = field(default_factory=TaxProfile)
     manual: ManualBook = field(default_factory=ManualBook)
+    overviews: list = field(default_factory=list)      # broker annual tax overviews (LYNX Jaaroverzicht), for checks
 
     def __post_init__(self):
         self._sold: dict[int, list] = {}
@@ -298,6 +299,49 @@ class Report:
         return pd.DataFrame([dict(fund_a=a, fund_b=b, overlap=s, shared=n) for a, b, s, n in al.overlap],
                             columns=["fund_a", "fund_b", "overlap", "shared"])
 
+    # ---------- checks against the brokers' annual overviews ----------
+    def overview_checks(self, year: int) -> pd.DataFrame:
+        """The broker's own yearly figures next to the app's (D32): income for code 1444-11, and the 31-12 value."""
+        rows = []
+        for ov in self.overviews:
+            if ov.year != year:
+                continue
+            b = ov.broker
+            inc = [i for i in self.portfolio.income if i.broker == b and i.date.year == year]
+            div = sum(i.amount_eur for i in inc if i.kind == "dividend")
+            interest = sum(i.amount_eur for i in inc if i.kind == "interest")
+            int_tax = sum(i.amount_eur for i in inc if i.kind == "withholding" and i.asset_class == "Cash/FX")
+            div_tax = sum(i.amount_eur for i in inc if i.kind == "withholding" and i.asset_class != "Cash/FX")
+            t = ov.totals
+            add = lambda what, theirs, ours: rows.append(dict(broker=b, item=what, broker_eur=theirs,  # noqa: E731
+                                                              app_eur=round(ours, 2) + 0.0,
+                                                              difference=None if theirs is None else round(ours - theirs, 2)))
+            add("Gross dividends", round(t.get("dividends_be", 0) + t.get("dividends_foreign", 0), 2) if t else None, div)
+            add("Dividend tax withheld", round(-(t.get("dividend_tax_be", 0) + t.get("dividend_tax_foreign", 0)), 2) + 0.0 if t else None,
+                div_tax)
+            add("Interest after tax withheld", round(t.get("interest_be", 0) + t.get("interest_foreign", 0), 2) if t else None,
+                interest + int_tax)
+            add("Code 1444-11 (dividends + interest)", ov.code_1444, div + interest + int_tax)
+            if "AANDELEN" in ov.values and year == self.tax.rules.reference_date.year:
+                add(f"Value of the securities on 31-12-{year}", ov.values["AANDELEN"][1], self._value_on_reference(b))
+        return pd.DataFrame(rows, columns=["broker", "item", "broker_eur", "app_eur", "difference"])
+
+    def _value_on_reference(self, broker: str) -> float:
+        """Units held on the reference date × the 31-12 price, for one broker (cash excluded)."""
+        from .engine.performance import _at, units_over_time
+        ref = self.tax.rules.reference_date
+        total = 0.0
+        for (b, asset), steps in units_over_time(self.portfolio).items():
+            q = _at(steps, ref)
+            if b != broker or q <= 1e-9:
+                continue
+            h = next((x for x in self.portfolio.holdings() if x.broker == b and x.asset == asset), None)
+            if h is None:
+                continue
+            p = self.prices.reference(h)
+            total += q * (p.value if p else 0.0)
+        return total
+
     # ---------- Reynders tax ----------
     def reynders_summary(self, lines: list) -> dict:
         """Reynders tax per person for these lines: base (their share) and 30% of it; no exemption."""
@@ -425,4 +469,5 @@ def build_report(files, fetch_prices: bool = True, cache_dir=None, options: Port
     if overrides_csv:
         pb.load_overrides_csv(overrides_csv)
     calc = TaxCalculator(pf, pb, rules, today=today, reynders=Reynders(reynders, reynders_rules, pb.eur_per))
-    return Report(pf, pb, calc, warnings + pf.warnings, profile, manual)
+    return Report(pf, pb, calc, warnings + pf.warnings, profile, manual,
+                  [r.overview for r in results if getattr(r, "overview", None) is not None])

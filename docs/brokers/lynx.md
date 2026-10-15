@@ -83,3 +83,13 @@ except USD trades and USD dividends (per-trade conversion here, the statement's 
 - "FX Translations P&L" (revaluation of USD cash) is left out; Forex Trade Component rows only add their commission.
 - It supplements the Activity Statements: its rows count only after the newest statement's end (`combine`), and
   the Flex sync counts from the end of whichever reaches further.
+
+## Jaaroverzicht (annual tax overview) · `parsers/lynx_annual.py` (D32)
+
+LYNX's yearly summary for the tax return: dividends and interest in and outside Belgium, tax withheld, the amount
+for code 1444-11, the account value on 1 January and 31 December (cash, securities), and the rows behind the totals.
+Page 1 is only the LYNX logo, so detection also reads page 2. It is used as a **check** in the tax report, not as
+transactions (the statements already have the same income). On a real 2025 overview everything matched to the cent:
+gross dividends, interest after withholding, the code 1444-11 amount and the securities on 31-12-2025
+(the app's units × 31-12-2025 prices). The per-payment EUR amounts in the overview use the rate of the
+payment day and differ from the statement's (D6), but the yearly totals are the same.

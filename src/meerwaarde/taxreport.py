@@ -41,6 +41,7 @@ class TaxYearReport:
     rules_text: list[str] = field(default_factory=list)
     reynders: dict = field(default_factory=dict)           # reynders_summary() of the year's sales
     reynders_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
+    checks: pd.DataFrame = field(default_factory=pd.DataFrame)   # the brokers' annual overviews next to the app's figures
 
     @property
     def complete(self) -> bool:
@@ -119,6 +120,15 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
                      "the stock exchange tax return yourself, by the last working day of the second month after the trade.")
 
     notes = []
+    checks = rep.overview_checks(year)
+    if not checks.empty:
+        off = checks[checks.difference.abs() > 1.0] if checks.difference.notna().any() else checks.iloc[0:0]
+        notes.append(("The broker's annual overview matches the app's figures within €1." if off.empty else
+                      f"The broker's annual overview differs from the app on: {', '.join(off.item)} (see Checks)."))
+        code = checks[checks.item.str.startswith("Code 1444")]
+        if not code.empty and code.broker_eur.iloc[0] is not None:
+            checklist.append(f"{code.broker.iloc[0]} states €{code.broker_eur.iloc[0]:,.2f} for code 1444-11 in its "
+                             f"annual overview (the app: €{code.app_eur.iloc[0]:,.2f}).")
     if rep.reynders_flags():
         notes.append(f"{len(rep.reynders_flags())} bond fund(s) without a Reynders entry: their Reynders tax isn't counted.")
     if not (pd.Timestamp(today) > pd.Timestamp(year, 12, 31)):
@@ -136,4 +146,4 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
 
     return TaxYearReport(year, today, [(p.id, p.name) for p in hh.persons], cgt, exemption, history, sales, inc, detail,
                          rep.tob_summary(year), rep.tob_detail(year), accounts, checklist, notes,
-                         RULES_TEXT + INCOME_RULES_TEXT, reynders, rep.reynders_table(sold))
+                         RULES_TEXT + INCOME_RULES_TEXT, reynders, rep.reynders_table(sold), checks)

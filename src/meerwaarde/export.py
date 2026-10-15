@@ -1009,11 +1009,18 @@ def _tr_checklist_sheet(ws, ytr) -> None:
     _page(ws)
 
 
+CHECKS = [Col("broker", "Broker", width=10), Col("item", "Item", width=40),
+          Col("broker_eur", "Broker's annual overview (€)", EUR, 18), Col("app_eur", "This app (€)", EUR, 15),
+          Col("difference", "Difference (€)", EUR, 14, '=IF({broker_eur}{r}="","",{app_eur}{r}-{broker_eur}{r})')]
+
+
 def tax_report_workbook(ytr) -> Workbook:
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
     _tr_report_sheet(ws, ytr)
+    if ytr.checks is not None and not ytr.checks.empty:
+        _table(wb.create_sheet("Checks"), CHECKS, _records(ytr.checks))
     sales = wb.create_sheet(f"Sales {ytr.year}")
     cols = list(TR_SALES)
     if len(ytr.persons) > 1:

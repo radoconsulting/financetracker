@@ -302,7 +302,8 @@ if PRICES_CSV.exists():
 reynders_book = ReyndersBook.load(REYNDERS_JSON)
 calc = TaxCalculator(pf, pb, rules, reynders=Reynders(reynders_book, ReyndersRules(cap_at_gain=ry_cap, deduct_from_cgt=ry_deduct),
                                                       pb.eur_per))
-rep = Report(pf, pb, calc, parse_warnings + manual.warnings() + pf.warnings, profile, manual)
+rep = Report(pf, pb, calc, parse_warnings + manual.warnings() + pf.warnings, profile, manual,
+             [r.overview for r in results if getattr(r, "overview", None) is not None])
 hh = profile.household
 
 with st.spinner("Looking up prices…"):
@@ -461,7 +462,14 @@ with tabs[1]:
         "pnl_eur": st.column_config.NumberColumn("Profit", format=EUR)})
     st.download_button("Download sales (CSV)", realized_df.to_csv(index=False), "realized.csv", "text/csv")
     if not income_df.empty:
-        st.subheader("Dividends and interest")
+        if not ytr.checks.empty:
+        st.markdown("**Check against the broker's annual overview**")
+        st.dataframe(ytr.checks, hide_index=True, width="stretch", column_config={
+            "broker_eur": st.column_config.NumberColumn("Broker's overview", format=EUR),
+            "app_eur": st.column_config.NumberColumn("This app", format=EUR),
+            "difference": st.column_config.NumberColumn("Difference", format=EUR)})
+
+    st.subheader("Dividends and interest")
         st.dataframe(income_df.sort_values("date", ascending=False), hide_index=True, width="stretch",
                      column_config={"amount_eur": st.column_config.NumberColumn("Amount", format=EUR)})
         st.download_button("Download dividends and interest (CSV)", income_df.to_csv(index=False), "income.csv", "text/csv")

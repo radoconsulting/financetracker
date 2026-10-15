@@ -170,6 +170,14 @@ def tax_report_pdf(ytr: TaxYearReport, target=None):
         rows.append([r.broker, str(r.trades), eur(r.amount_eur), _p(r.basis)])
     s.append(_table(rows, [30 * mm, 18 * mm, 28 * mm, 104 * mm], right=(1, 2)))
 
+    if ytr.checks is not None and not ytr.checks.empty:
+        s.append(Paragraph("Check against the broker's annual overview", H3))
+        rows = [["Broker", "Item", "Broker", "This app", "Difference"]]
+        for r in ytr.checks.itertuples():
+            rows.append([r.broker, _p(r.item), eur(r.broker_eur), eur(r.app_eur),
+                         "" if r.difference is None or r.difference != r.difference else eur(r.difference, dash=False)])
+        s.append(_table(rows, [18 * mm, 72 * mm, 30 * mm, 30 * mm, 30 * mm], right=(2, 3, 4)))
+
     s.append(Paragraph("4. Checklist", H2))
     for i, c in enumerate(ytr.checklist, 1):
         s.append(Paragraph(f"[&nbsp;&nbsp;] {i}. {escape(c)}", BASE))

@@ -215,3 +215,11 @@ can't replace the Activity Statement (D6). `ParseResult.supplement` marks it; `c
 the newest LYNX statement's end and maps symbols to ISINs first. Same rule as the Flex sync (D28), and the sync's
 coverage includes these rows so the two never overlap. Regression unchanged (the file isn't in `private/exports`).
 
+### D32 · Brokers' annual overviews are checks, not sources (2026-10-15)
+The LYNX Jaaroverzicht repeats income that is already in the statements, so it gives no transactions;
+`ParseResult.overview` carries it and `Report.overview_checks(year)` puts the broker's figures next to the app's:
+gross dividends, dividend tax, interest after withholding, the code 1444-11 amount, and the value of the securities
+on 31-12-2025 (units held that day × the reference prices: a direct check of the purchase values for the
+meerwaardebelasting). Shown in the Tax report tab, its Excel (sheet Checks), PDF and `meerwaarde tax-report`; the
+checklist quotes the broker's code 1444-11 amount. Regression unchanged.
+

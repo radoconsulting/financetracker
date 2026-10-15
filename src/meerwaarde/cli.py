@@ -212,6 +212,12 @@ def cmd_tax_report(a):
     print("\nStock exchange tax")
     for r in ytr.tob.itertuples():
         print(f"  {r.broker:<8} {_eur(r.amount_eur):>12}  {r.basis}")
+    if not ytr.checks.empty:
+        print("\nCheck against the broker's annual overview")
+        for r in ytr.checks.itertuples():
+            theirs = "-" if r.broker_eur is None else f"{r.broker_eur:,.2f}"
+            diff = "" if r.difference is None or r.difference != r.difference else f"  (difference {r.difference:+,.2f})"
+            print(f"  {r.broker:<8} {r.item:<40} broker {theirs:>12}  app {r.app_eur:>12,.2f}{diff}")
     print("\nChecklist")
     for i, c in enumerate(ytr.checklist, 1):
         print(f"  {i}. {c}")
