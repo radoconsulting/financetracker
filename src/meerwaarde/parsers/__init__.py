@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from . import bitvavo, degiro, degiro_account, lynx
+from . import bitvavo, degiro, degiro_account, degiro_csv, lynx
 from ..util import pdf_text
 
 BROKERS = ("Bitvavo", "DEGIRO", "LYNX")
@@ -42,8 +42,38 @@ def detect_broker(source) -> str | None:
     return None
 
 
+def decode(data: bytes) -> str:
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1")
+
+
+def parse_csv(text: str, filename: str = "") -> ParseResult:
+    """A CSV export, recognised by its header row."""
+    if degiro_csv.is_degiro_csv(text):
+        txns, info, warns = degiro_csv.parse_text(text, filename)
+        res = ParseResult("DEGIRO", txns, None, warns, filename)
+        if info is not None:
+            res.account = info
+            res.warnings = warns + [f"DEGIRO account statement {info.period_start} – {info.period_end} (CSV): {info.trades} trades"]
+        return res
+    if bitvavo.is_bitvavo_csv(text):
+        txns, warns = bitvavo.parse_csv_text(text, filename)
+        return ParseResult("Bitvavo", txns, None, warns, filename)
+    from . import mapped
+    m = mapped.match(text)
+    if m is not None:
+        txns, warns = mapped.parse_text(text, m, filename)
+        return ParseResult(m.broker, txns, None, warns, filename)
+    raise ValueError(f"{filename or 'file'}: CSV not recognised (DEGIRO Transacties or Rekeningoverzicht, Bitvavo, or a "
+                     "format you mapped on the Data tab)")
+
+
 def parse_file(source, filename: str = "", broker: str | None = None) -> ParseResult:
-    """Parse one PDF (path, file object or bytes). The broker is detected when not given."""
+    """Parse one export (PDF or CSV; path, file object or bytes). The broker is detected when not given."""
     if isinstance(source, (str, Path)):
         filename = filename or Path(source).name
         data = Path(source).read_bytes()
@@ -51,6 +81,8 @@ def parse_file(source, filename: str = "", broker: str | None = None) -> ParseRe
         data = bytes(source)
     else:
         data = source.read()
+    if not data.lstrip()[:5].startswith(b"%PDF"):
+        return parse_csv(decode(data), filename)
     broker = broker or detect_broker(data)
     if broker == "Bitvavo":
         txns, warns = bitvavo.parse(io.BytesIO(data), filename)

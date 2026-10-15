@@ -116,7 +116,6 @@ def transactions(header, rows, filename=""):
     if missing:
         raise ValueError(f"{filename}: DEGIRO Transacties CSV without column(s) {', '.join(missing)}")
     txns, warns = [], []
-    n = len(rows)
     for i, r in enumerate(rows):
         try:
             qty = number(_get(r, ix, "qty"))
@@ -138,7 +137,7 @@ def transactions(header, rows, filename=""):
                                 asset_class=guess_class(name, isin), qty=qty, price=number(_get(r, ix, "price")),
                                 price_cur=price_cur or None, gross_eur=abs(value), fees_eur=-(autofx + fees),
                                 total_eur=total, note=exchange + (f"/{venue}" if venue else ""), source=filename,
-                                order=-(n - i) if False else -i, ref=_get(r, ix, "order")))
+                                order=-i, ref=_get(r, ix, "order")))
     pct = {t.asset for t in txns if t.price and t.qty and (t.gross_eur or 0) > 0
            and abs(abs(t.qty) * t.price / 100 - t.gross_eur) < 0.02 * max(1.0, t.gross_eur)}
     for t in txns:

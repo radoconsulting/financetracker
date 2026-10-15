@@ -1,4 +1,6 @@
-"""Bitvavo 'Transactieoverzicht' PDF (Volledige geschiedenis)."""
+"""Bitvavo 'Transactieoverzicht' (Volledige geschiedenis): PDF, or the CSV export (backlog item 13).
+
+Both are turned into the same row dicts and interpreted by `parse_rows` (pure, tested without files)."""
 from __future__ import annotations
 
 import re
@@ -60,16 +62,71 @@ def read_rows(source) -> list[dict]:
     return rows
 
 
+CSV_COLS = {"date": ("date",), "time": ("time",), "type": ("type",), "currency": ("currency",), "amount": ("amount",),
+            "quote": ("quote price", "price"), "paid_cur": ("received / paid currency", "received/paid currency"),
+            "paid": ("received / paid amount", "received/paid amount"), "fee_cur": ("fee currency",),
+            "fee": ("fee amount",), "status": ("status",), "txid": ("transaction id",), "address": ("address",)}
+
+
+def is_bitvavo_csv(text: str) -> bool:
+    head = text.lstrip("﻿").split("\n", 1)[0].lower().replace("received/paid", "received / paid")
+    return "transaction id" in head and "received / paid" in head and "currency" in head
+
+
+def csv_rows(text: str) -> list[dict]:
+    """Bitvavo CSV -> the row dicts of the PDF reader ('paid' and 'fee' carry their unit at the end, as in the PDF)."""
+    import csv
+    import io
+    rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
+    if not rows:
+        return []
+    low = [h.strip().lower() for h in rows[0]]
+    ix = {k: next((low.index(n) for n in names if n in low), None) for k, names in CSV_COLS.items()}
+
+    def get(r, k):
+        i = ix.get(k)
+        return r[i].strip() if i is not None and i < len(r) else ""
+
+    out = []
+    for r in rows[1:]:
+        if not any(c.strip() for c in r):
+            continue
+        out.append(dict(date=f"{get(r, 'date')} {get(r, 'time')}".strip(), type=get(r, "type"), currency=get(r, "currency"),
+                        amount=get(r, "amount"), quote=get(r, "quote"),
+                        paid=f"{get(r, 'paid')} {get(r, 'paid_cur')}".strip(), fee=f"{get(r, 'fee')} {get(r, 'fee_cur')}".strip(),
+                        status=get(r, "status"), txid=get(r, "txid"), address=get(r, "address")))
+    return out
+
+
+def _when(s: str):
+    """'2026-10-12 14:19:41' (PDF and CSV), also with milliseconds or a 'T'."""
+    s = s.strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M"):
+        try:
+            return parse_dt(s, fmt)
+        except ValueError:
+            continue
+    raise ValueError(s)
+
+
 def parse(source, filename: str = "") -> tuple[list[Transaction], list[str]]:
+    return parse_rows(read_rows(source), filename)
+
+
+def parse_csv_text(text: str, filename: str = "") -> tuple[list[Transaction], list[str]]:
+    return parse_rows(csv_rows(text), filename)
+
+
+def parse_rows(rows: list[dict], filename: str = "") -> tuple[list[Transaction], list[str]]:
     txns, warnings = [], []
-    for i, r in enumerate(read_rows(source)):
+    for i, r in enumerate(rows):
         status = r.get("status", "").strip().lower()
         if status and status not in OK_STATUS:
             continue
         typ = r["type"].strip().lower()
         cur = r["currency"].strip().upper()
         try:
-            ts = parse_dt(r["date"], "%Y-%m-%d %H:%M:%S")
+            ts = _when(r["date"])
         except ValueError:
             warnings.append(f"Bitvavo: skipped a row with an unreadable date: {r['date']!r}")
             continue

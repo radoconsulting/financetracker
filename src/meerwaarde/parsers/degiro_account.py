@@ -30,6 +30,7 @@ _TRADE = re.compile(r"^(?:[A-Z :]+: )?(Koop|Verkoop) [\d.,]+ @ [\d.,]+ [A-Z]{3}$
 # description -> kind; checked in order, first match wins (lower case, 'startswith' unless noted)
 RULES = [
     ("dividendbelasting", WITHHOLDING),
+    ("dividend tax", WITHHOLDING),
     ("dividend", DIVIDEND),
     ("coupon", INTEREST),
     ("transactiebelasting", TOB),
@@ -46,11 +47,21 @@ RULES = [
     ("degiro exchange connection fee", FEE),
     ("verrekening welkomstactie", FEE),
     ("conversie geldmarktfonds", FEE),
+    # English-language exports (account CSV/PDF in English)
+    ("belgian transaction tax", TOB),
+    ("bond cash settlement", REDEMPTION),
+    ("securities lending income", INTEREST),
+    ("interest", INTEREST),
+    ("deposit", CASH_IN),
+    ("withdrawal", CASH_OUT),
+    ("degiro exchange connection fee", FEE),
+    ("money market fund conversion", FEE),
 ]
 # known rows that carry nothing new: trades and their costs are in the Transacties export; the rest moves cash between
 # the DEGIRO account and the flatex bank account, or converts currency
 IGNORE = ("degiro transactiekosten", "degiro cash sweep transfer", "overboeking", "processed flatex withdrawal",
-          "valuta creditering", "valuta debitering")
+          "valuta creditering", "valuta debitering",
+          "degiro transaction and/or third party fees", "degiro transaction fee", "fx credit", "fx debit", "transfer")
 
 
 @dataclass
@@ -128,7 +139,7 @@ def parse_rows(rows: list[dict], filename: str = ""):
     rates = defaultdict(list)                                      # currency -> [(datetime, eur per unit)]
     for r in rows:
         cur, v = _amount(r["mut"])
-        if r["desc"].lower().startswith("valuta debitering") and cur and cur != "EUR" and r["fx"]:
+        if r["desc"].lower().startswith(("valuta debitering", "fx debit")) and cur and cur != "EUR" and r["fx"]:
             try:
                 rates[cur].append((_ts(r), 1.0 / num_eu(r["fx"])))
             except (ValueError, ZeroDivisionError):
