@@ -43,17 +43,29 @@ class FundCheck:
         return sum(f.per_year or 0.0 for f in self.flags)
 
 
-def alternative_for(f: Fund | None, isin: str) -> tuple[Fund | None, str]:
-    """Cheapest accumulating fund at 0.12% on the same index, else the cheapest such world fund."""
+WORLDISH = ("world", "acwi", "all-world", "all country", "global")
+
+
+def _is_world(f: Fund | None, name: str) -> bool:
+    text = f"{f.index if f else ''} {name}".lower()
+    return any(w in text for w in WORLDISH) and not any(x in text for x in ("ex usa", "ex-usa", "ex us", "small cap",
+                                                                               "emerging", "bond", "esg"))
+
+
+def alternative_for(f: Fund | None, isin: str, name: str = "", bond: bool = False) -> tuple[Fund | None, str]:
+    """Cheapest accumulating fund at 0.12% on the same index; for a world fund, else the cheapest such world fund.
+    Nothing for bond funds or other indexes without a like-for-like fund in the catalog."""
     def ok(x: Fund) -> bool:
         return x.isin != isin and x.accumulating and (x.tob_rate or 1) <= 0.0012 and x.ter is not None
     same = [x for x in CATALOG.values() if f and f.index and x.index == f.index and ok(x)]
     if same:
         return min(same, key=lambda x: x.ter), f"same index ({f.index})"
+    if bond or not _is_world(f, name):
+        return None, "no comparable fund in the catalog"
     world = [CATALOG[i] for i in WORLD_TARGETS if i in CATALOG and ok(CATALOG[i])]
     if world:
         return min(world, key=lambda x: x.ter), "a world fund (no cheaper fund on the same index in the catalog)"
-    return None, ""
+    return None, "no comparable fund in the catalog"
 
 
 def check_funds(rep) -> list[FundCheck]:
@@ -71,15 +83,18 @@ def check_funds(rep) -> list[FundCheck]:
     out = []
     for isin, d in held.items():
         f = lookup(isin)
-        alt, why = alternative_for(f, isin)
+        bond = d["cls"] == "Bond ETF" or rep.tax.reynders.applies(isin)
+        alt, why = alternative_for(f, isin, d["name"], bond)
         c = FundCheck(isin, d["name"], round(d["value"], 2), alternative=alt, alternative_why=why)
         dist = is_distributing(d["name"], isin)
         if dist:
             div = sum(dividends_per_unit(pf, b, isin, today) * sum(h.qty for h in pf.holdings() if h.asset == isin and h.broker == b)
                       for b in d["brokers"])
-            c.flags.append(Flag("distributing", f"Distributing: 30% dividend tax on each distribution "
-                                f"(last 12 months: €{div:,.0f} received)." if div else
-                                "Distributing: 30% dividend tax on each distribution.", round(DIVIDEND_TAX * div, 2)))
+            tail = (" An accumulating fund reinvests it instead; the 10% meerwaardebelasting may apply when you sell."
+                    if alt else "")
+            c.flags.append(Flag("distributing", (f"Distributing: 30% dividend tax on each distribution (last 12 months: "
+                                f"€{div:,.0f} received)." if div else "Distributing: 30% dividend tax on each distribution.")
+                                + tail, round(DIVIDEND_TAX * div, 2)))
         rate = next((r for r in (observed_tob_rate(pf, b, isin) for b in d["brokers"]) if r is not None), None)
         rate = rate if rate is not None else (f.tob_rate if f else None)
         if rate is not None and rate >= 0.0132 - 1e-9:
@@ -91,7 +106,7 @@ def check_funds(rep) -> list[FundCheck]:
                                 round((f.ter - alt.ter) * d["value"], 2)))
         elif f is None or f.ter is None:
             c.flags.append(Flag("ter", "Running costs (TER) unknown: not in the catalog. Check the fund's KID."))
-        if d["cls"] == "Bond ETF" or rep.tax.reynders.applies(isin):
+        if bond:
             c.flags.append(Flag("bonds", "Bond fund: Reynders tax (30% on the interest part) when you sell, with no "
                                 "exemption; see the Reynders panel."))
         if c.flags:
