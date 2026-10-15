@@ -10,6 +10,7 @@ from .engine.household import ExemptionYear, exemption_schedule, summarize_peopl
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
 from .engine.allocation import Allocation, allocation
+from .engine.costs import KINDS as COST_KINDS, Costs, costs
 from .engine.networth import NetWorth, networth
 from .engine.performance import DEFAULT_BENCHMARK, Performance, performance
 from .engine.reynders import Reynders, ReyndersBook, ReyndersRules
@@ -274,6 +275,25 @@ class Report:
         rows = [dict(date=p.on, value=round(p.value, 2), invested=round(p.invested, 2),
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
+
+    # ---------- fees and costs ----------
+    def costs(self, fetch: bool | None = None) -> Costs:
+        cache = self.__dict__.setdefault("_costs", {})
+        if fetch not in cache:
+            cache[fetch] = costs(self, fetch)
+        return cache[fetch]
+
+    @staticmethod
+    def costs_table(c: Costs, by_broker: bool = False) -> pd.DataFrame:
+        """One row per year (and broker), one column per kind of cost, and the total."""
+        if not c.rows:
+            return pd.DataFrame(columns=["year"] + (["broker"] if by_broker else []) + list(COST_KINDS) + ["total"])
+        df = pd.DataFrame(c.rows)
+        idx = ["year", "broker"] if by_broker else ["year"]
+        t = df.pivot_table(index=idx, columns="kind", values="amount", aggfunc="sum", fill_value=0.0)
+        t = t.reindex(columns=[k for k in COST_KINDS if k in t.columns])
+        t["total"] = t.sum(axis=1)
+        return t.round(2).reset_index()
 
     # ---------- net worth over time ----------
     def networth(self, fetch: bool | None = None) -> NetWorth:

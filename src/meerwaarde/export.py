@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Manual positions", "Prices",
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Manual positions", "Prices",
           "How calculated")
 
 
@@ -279,6 +279,28 @@ def _allocation_sheet(ws, rep: Report, al) -> None:
     for n in al.notes:
         _write(ws, row, 1, n, NOTE)
         row += 1
+
+
+def _costs_sheet(ws, rep: Report, c) -> None:
+    from .engine.costs import KINDS
+    df = rep.costs_table(c, by_broker=True)
+    kinds = [k for k in KINDS if k in df.columns]
+    cols = [Col("year", "Year", "0", 8), Col("broker", "Broker", width=10)] + [Col(k, f"{k} (€)", EUR, 17) for k in kinds]
+    letters = [get_column_letter(i) for i in range(3, len(kinds) + 3)]
+    cols.append(Col("total", "Total (€)", EUR, 15, f"=SUM({letters[0]}{{r}}:{letters[-1]}{{r}})" if letters else None))
+    first, last, _L = _table(ws, cols, _records(df))
+    r = max(last, first) + 2
+    _write(ws, r, 1, "At today's level, per year", BOLD)
+    for i, (k, v) in enumerate(c.yearly_now.items()):
+        _write(ws, r + 1 + i, 1, k)
+        _write(ws, r + 1 + i, 3, v, INPUT, EUR, INPUT_FILL)
+    n = len(c.yearly_now)
+    _write(ws, r + 1 + n, 1, "Per year", BOLD, border=TOTAL_BORDER)
+    _write(ws, r + 1 + n, 3, f"=SUM(C{r + 1}:C{r + n})", BOLD, EUR, border=TOTAL_BORDER)
+    _write(ws, r + 2 + n, 1, "Over 10 years (same level, no growth)", BOLD)
+    _write(ws, r + 2 + n, 3, f"=C{r + 1 + n}*10", BOLD, EUR)
+    for j, note in enumerate(c.notes):
+        _write(ws, r + 4 + n + j, 1, note, NOTE)
 
 
 def _networth_sheet(ws, rep: Report, nw) -> None:
@@ -799,7 +821,7 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 # ---------------------------------------------------------------- workbook
 def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None, perf=None,
-                   alloc=None, nw=None) -> Workbook:
+                   alloc=None, nw=None, cost=None) -> Workbook:
     from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
     plan = harvest if harvest is not None else plan_harvest(rep)
@@ -824,6 +846,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     _performance_sheet(sheets["Performance"], rep, perf if perf is not None else rep.performance())
     _allocation_sheet(sheets["Allocation"], rep, alloc if alloc is not None else rep.allocation())
     _networth_sheet(sheets["Net worth"], rep, nw if nw is not None else rep.networth())
+    _costs_sheet(sheets["Costs"], rep, cost if cost is not None else rep.costs())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
@@ -846,10 +869,10 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
 
 
 def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None,
-            switch=None, perf=None, alloc=None, nw=None):
+            switch=None, perf=None, alloc=None, nw=None, cost=None):
     """Write the workbook to `target` and return its path, or return the bytes when no target is given.
     `switch`: (sources, cases, plans, horizon) from the switch planner; default: distributing ETFs into world ETFs."""
-    wb = build_workbook(rep, simulation, harvest, switch, perf, alloc, nw)
+    wb = build_workbook(rep, simulation, harvest, switch, perf, alloc, nw, cost)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)

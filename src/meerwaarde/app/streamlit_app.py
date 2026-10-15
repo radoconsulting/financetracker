@@ -378,7 +378,7 @@ def reynders_panel():
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance", "Allocation"])
+                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance", "Allocation", "Costs"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -1270,11 +1270,34 @@ with tabs[13]:
                     st.toast("Saved")
                     st.rerun()
 
+# ---------------------------------------------------------------- costs
+cost = None
+with tabs[14]:
+    st.subheader("What your investing costs")
+    with st.spinner("Adding up the costs…"):
+        cost = rep.costs()
+    c = st.columns(3)
+    c[0].metric("Per year at today's level", money(cost.per_year_now),
+                help="Trading costs of the last 12 months + running costs (TER) on today's value")
+    c[1].metric("Over 10 years", money(cost.per_year_now * 10), help="Same level, no growth")
+    c[2].metric("Of which running costs (TER)", money(cost.yearly_now.get("Running costs (TER)", 0.0)))
+    ct = rep.costs_table(cost)
+    if not ct.empty:
+        long = ct.drop(columns=["total"]).melt("year", var_name="kind", value_name="eur")
+        st.altair_chart(alt.Chart(long).mark_bar().encode(
+            x=alt.X("year:O", title=None), y=alt.Y("eur:Q", title="€", axis=alt.Axis(format=",.0f")),
+            color=alt.Color("kind:N", title=None, legend=alt.Legend(orient="top")),
+            tooltip=["year:O", "kind:N", alt.Tooltip("eur:Q", format=",.2f")]), width="stretch")
+        st.dataframe(rep.costs_table(cost, by_broker=True), hide_index=True, width="stretch",
+                     column_config={"year": st.column_config.NumberColumn("Year", format="%d")})
+    for n in cost.notes:
+        st.caption(n)
+
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
     st.subheader("Export")
     sw_result = (sw_srcs, sw_cases, sw_plans, sw_horizon) if sw_srcs and sw_targets else None
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf, alloc=alloc, nw=nw),
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf, alloc=alloc, nw=nw, cost=cost),
                        file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "

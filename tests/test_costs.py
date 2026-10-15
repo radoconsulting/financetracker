@@ -40,7 +40,7 @@ def test_costs_by_kind_and_year():
     got = {(r["year"], r["broker"], r["kind"]): r["amount"] for r in c.rows}
     assert got[(2025, "A", "Stock exchange tax")] == 12.0 and got[(2025, "A", "Commissions and conversion")] == 6.0
     assert got[(2026, "A", "Other fees")] == 2.5 and got[(2026, "C", "Commissions and conversion")] == 0.25
-    assert got[(2026, "C", "Network fees")] == pytest.approx(0.01 * 100.25)
+    assert got[(2026, "C", "Network fees")] == pytest.approx(0.01 * 100.25, abs=0.005)   # rounded to cents
     ter = lookup(WORLD).ter
     assert got[(2026, "A", "Running costs (TER)")] == pytest.approx(6 * 100 * 100 * ter / 12, rel=1e-6)   # Jan–Jun at 100
     assert c.yearly_now["Running costs (TER)"] == pytest.approx(10000 * ter)

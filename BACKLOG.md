@@ -11,10 +11,6 @@ Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in o
 
 Agreed on 15 October 2026 (from the feature review), in this order.
 
-### 17. Fees and costs dashboard · S
-Per year and broker: commissions, stock exchange tax, AutoFX/conversion costs, connection fees, and the running costs
-of funds (TER drag on the value held); what they add up to over 10 years.
-
 ### 18. Fund red flags · S
 Flag distributing funds (30% dividend tax), Belgian-registered accumulating funds (1.32% stock exchange tax), high TER
 and bond exposure (Reynders), each with a cheaper alternative from the catalog.
@@ -72,3 +68,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 13. CSV imports and more brokers · done 2026-10-15 · DEGIRO Transacties/Rekeningoverzicht and Bitvavo as CSV (through the PDF parsers' row logic), inbox folder, reminder when an export is older than 35 days; other brokers through a column mapping on the Data tab instead of guessed formats; IBKR CSV not needed (Flex). Not yet checked against real CSV exports (D29).
 - 15. Allocation look-through · done 2026-10-15 · Allocation tab, `meerwaarde allocation`, Excel sheet; asset class, region, currency (approximate), sector; look-through top holdings and fund overlap from the top 10 (lower bounds); justETF composition, own breakdown in exposure.json (D30).
 - 16. Net worth over time · done 2026-10-15 · Overview tab chart (by broker or asset class), Excel sheet with a chart; positions from the price series, cash per broker rebuilt from the rows and left out where deposits are missing (D33).
+- 17. Fees and costs dashboard · done 2026-10-15 · Costs tab, Excel sheet; stock exchange tax, commissions and conversion, other fees, network fees and TER drag per year and broker; yearly level today and over 10 years (D34).

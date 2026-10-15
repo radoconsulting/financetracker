@@ -232,3 +232,11 @@ for a while (shown as 0). Foreign cash stays at the euro amount of each trade (n
 exports: DEGIRO's rebuilt cash ends within the known USD valuation gap of the account statement's balance. Regression
 unchanged.
 
+### D34 · Costs: trading costs from the rows, running costs estimated from TER × value (2026-10-15)
+`engine/costs.py`. Stock exchange tax from the brokers' tax rows (the same totals as the tax report); commissions and
+conversion costs = the trades' `fees_eur` minus that tax (DEGIRO's AutoFX is in there, the Transacties export has no
+separate total); standalone fee rows; crypto network fees at their FIFO cost. Running costs: month-end value × TER/12
+for funds whose TER is in the catalog; funds without a known TER are listed. "Per year at today's level" = trading
+costs of the last 12 months + TER on today's value; × 10 for a decade, no growth or compounding (kept simple and
+conservative). Regression unchanged.
+

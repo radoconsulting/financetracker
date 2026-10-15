@@ -36,6 +36,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/reynders.py` | Reynders tax on bond funds: TIS / asset test / worst case per lot, ReyndersBook JSON, deduction from the 10% (D25) |
 | `src/meerwaarde/engine/performance.py` | XIRR, time-weighted return (Modified Dietz, monthly), value series, benchmark with the same flows (D27) |
 | `src/meerwaarde/engine/allocation.py` | Look-through exposure (asset class, region, country, sector, currency), top holdings, fund overlap; justETF composition, `exposure.json` overrides (D30) |
+| `src/meerwaarde/engine/costs.py` | Fees and costs per year/broker: stock exchange tax, commissions, other fees, network fees, TER drag (D34) |
 | `src/meerwaarde/engine/networth.py` | Net worth per month: positions × price series, cash per broker rebuilt from the rows (D33) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/manual.py` | ManualBook JSON: positions no export covers (funds, tak 21/23, savings, gold) → BUY/SELL transactions, prices into the PriceBook (D24) |
@@ -47,7 +48,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/prices/` | PriceBook (override > manual entry > statement > online; `history()` daily series) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
-| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions, Alerts, Performance, Allocation); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
+| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions, Alerts, Performance, Allocation, Costs); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
 | `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `performance`, `allocation`, `sync`, `refresh`, `app`; `--profile`, `--manual`, `--reynders` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
