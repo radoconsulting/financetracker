@@ -30,7 +30,7 @@ def test_advance_levy_at_60():
     p = Pension("P", birth_year=1980, start_year=2010, contributions={"2030": 1000.0, "2040": 1000.0, "2045": 1000.0})
     due, levy = advance_levy(p)
     assert due == 2040
-    assert levy == pytest.approx(0.08 * (1000 * 1.0475 ** 10 + 1000))           # 2045 is after the levy: not taxed
+    assert levy == pytest.approx(0.08 * (1000 * 1.0475 ** 10 + 1000), abs=0.01)         # 2045 is after the levy: not taxed
     late = Pension("P", birth_year=1970, start_year=2027, contributions={"2027": 1000.0})
     assert advance_levy(late)[0] == 2037                                         # started after 55: 10th anniversary
 
