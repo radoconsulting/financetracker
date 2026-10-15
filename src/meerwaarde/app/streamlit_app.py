@@ -462,14 +462,7 @@ with tabs[1]:
         "pnl_eur": st.column_config.NumberColumn("Profit", format=EUR)})
     st.download_button("Download sales (CSV)", realized_df.to_csv(index=False), "realized.csv", "text/csv")
     if not income_df.empty:
-        if not ytr.checks.empty:
-        st.markdown("**Check against the broker's annual overview**")
-        st.dataframe(ytr.checks, hide_index=True, width="stretch", column_config={
-            "broker_eur": st.column_config.NumberColumn("Broker's overview", format=EUR),
-            "app_eur": st.column_config.NumberColumn("This app", format=EUR),
-            "difference": st.column_config.NumberColumn("Difference", format=EUR)})
-
-    st.subheader("Dividends and interest")
+        st.subheader("Dividends and interest")
         st.dataframe(income_df.sort_values("date", ascending=False), hide_index=True, width="stretch",
                      column_config={"amount_eur": st.column_config.NumberColumn("Amount", format=EUR)})
         st.download_button("Download dividends and interest (CSV)", income_df.to_csv(index=False), "income.csv", "text/csv")
@@ -818,6 +811,13 @@ with tabs[6]:
                     + ("" if hh.single else " · " + " · ".join(f"{name} {money(ytr.reynders['people'][pid]['tax'])}"
                                                               for pid, name in ytr.persons)))
         st.dataframe(ytr.reynders_detail, hide_index=True, width="stretch")
+
+    if not ytr.checks.empty:
+        st.markdown("**Check against the broker's annual overview**")
+        st.dataframe(ytr.checks, hide_index=True, width="stretch", column_config={
+            "broker_eur": st.column_config.NumberColumn("Broker's overview", format=EUR),
+            "app_eur": st.column_config.NumberColumn("This app", format=EUR),
+            "difference": st.column_config.NumberColumn("Difference", format=EUR)})
 
     st.subheader("Dividends and interest")
     for pid, name in ytr.persons:
