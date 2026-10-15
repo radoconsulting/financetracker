@@ -208,3 +208,33 @@ class PriceBook:
         except Exception as e:
             self.errors.append(f"{a} (31-12): {e}")
         return None
+
+    # ---------- daily history (performance) ----------
+    def history(self, asset: str, asset_class: str, start: date, end: date) -> tuple[dict, str]:
+        """Daily prices in EUR between start and end, and their source; ({}, "") when no online source has them.
+        Never raises: errors go to `self.errors`."""
+        if not self.fetcher or asset_class == "Cash/FX":
+            return {}, ""
+        try:
+            if asset_class == "Crypto":
+                s = self.fetcher.bitvavo_series(asset, start, end)
+                return (s, "Bitvavo") if s else ({}, "")
+            if len(asset) == 12:
+                if asset_class in ("ETF", "Bond ETF", "Fund"):
+                    s = self.fetcher.justetf_series(asset, start, end)
+                    if s:
+                        return s, "justETF"
+                y = self.fetcher.yahoo_series(asset, start, end)
+                if y and y[0]:
+                    series, cur = y
+                    if cur == "EUR":
+                        return series, "Yahoo Finance"
+                    out = {}
+                    for d, v in series.items():
+                        k = self.eur_per(cur, d)
+                        if k:
+                            out[d] = v * k
+                    return out, f"Yahoo Finance ({cur}, ECB rates)"
+        except Exception as e:  # network trouble must never break a report
+            self.errors.append(f"{asset} (history): {e}")
+        return {}, ""

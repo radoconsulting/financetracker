@@ -20,6 +20,7 @@ import requests
 UA = {"User-Agent": "Mozilla/5.0 (meerwaarde portfolio tool)", "Accept": "application/json,text/plain,*/*"}
 NOW_TTL = 6 * 3600            # current prices: refresh after 6 hours
 HIST_TTL = 365 * 24 * 3600    # historical prices don't change
+SERIES_TTL = 24 * 3600        # daily series up to today (performance): the key holds the end date, so one fetch a day
 
 
 def default_cache_dir() -> Path:
@@ -112,6 +113,38 @@ class Fetcher:
                          params={"period1": p1, "period2": p2, "interval": "1d"})
         return parse_yahoo_at(data, day)
 
+    # ---------- daily series (performance, backlog item 14) ----------
+    def bitvavo_series(self, coin: str, start: date, end: date) -> dict[date, float]:
+        """Daily closes in EUR; Bitvavo returns at most 1440 candles per call."""
+        out: dict[date, float] = {}
+        t0 = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp() * 1000)
+        t_end = int(datetime(end.year, end.month, end.day, 23, 59, tzinfo=timezone.utc).timestamp() * 1000)
+        step = 1000 * 86400 * 1000
+        while t0 <= t_end:
+            t1 = min(t_end, t0 + step)
+            data = self._get(f"https://api.bitvavo.com/v2/{coin}-EUR/candles", SERIES_TTL,
+                             params={"interval": "1d", "start": t0, "end": t1, "limit": 1440})
+            out.update(parse_bitvavo_daily(data))
+            t0 = t1 + 1
+        return out
+
+    def justetf_series(self, isin: str, start: date, end: date) -> dict[date, float]:
+        data = self._get(f"https://www.justetf.com/api/etfs/{isin}/performance-chart", SERIES_TTL,
+                         params={"locale": "en", "currency": "EUR", "valuesType": "MARKET_VALUE", "reduceData": "false",
+                                 "includeDividends": "false", "dateFrom": start.isoformat(), "dateTo": end.isoformat()})
+        return parse_justetf_series(data)
+
+    def yahoo_series(self, isin: str, start: date, end: date) -> tuple[dict[date, float], str] | None:
+        """Daily closes in the listing's currency, and that currency."""
+        sym = self.yahoo_symbol(isin)
+        if not sym:
+            return None
+        p1 = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp())
+        p2 = int(datetime(end.year, end.month, end.day, tzinfo=timezone.utc).timestamp()) + 2 * 86400
+        data = self._get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}", SERIES_TTL,
+                         params={"period1": p1, "period2": p2, "interval": "1d"})
+        return parse_yahoo_series(data)
+
     # ---------- ECB reference rates ----------
     def ecb_rate(self, currency: str, day: date) -> float | None:
         """Units of `currency` per EUR on `day` (or the last publication before it)."""
@@ -194,6 +227,33 @@ def parse_yahoo_at(data, day: date):
             if datetime.fromtimestamp(ts, tz=timezone.utc).date() <= day:
                 best = float(c)
         return (best, res["meta"].get("currency", "USD")) if best is not None else None
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def parse_bitvavo_daily(data) -> dict[date, float]:
+    if not isinstance(data, list):
+        return {}
+    return {datetime.fromtimestamp(int(c[0]) / 1000, tz=timezone.utc).date(): float(c[4]) for c in data if len(c) > 4}
+
+
+def parse_justetf_series(data) -> dict[date, float]:
+    series = data.get("series") if isinstance(data, dict) else None
+    out = {}
+    for pt in series or []:
+        d, v = pt.get("date"), _raw(pt.get("value"))
+        if d and v is not None:
+            out[date.fromisoformat(d[:10])] = v
+    return out
+
+
+def parse_yahoo_series(data):
+    try:
+        res = data["chart"]["result"][0]
+        closes = res["indicators"]["quote"][0]["close"]
+        out = {datetime.fromtimestamp(ts, tz=timezone.utc).date(): float(c)
+               for ts, c in zip(res["timestamp"], closes) if c is not None}
+        return out, res["meta"].get("currency", "USD")
     except (KeyError, IndexError, TypeError, ValueError):
         return None
 
