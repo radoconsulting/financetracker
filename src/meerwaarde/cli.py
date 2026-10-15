@@ -246,6 +246,50 @@ def cmd_performance(a):
         print(f"Excel workbook written to {to_xlsx(rep, _out_path(a.xlsx, a.out, 'performance.xlsx'), perf=perf)}")
 
 
+def _data_dir(a) -> Path:
+    from .datadir import default_data_dir
+    d = Path(a.data_dir).expanduser() if a.data_dir else default_data_dir()
+    if not d.exists():
+        sys.exit(f"Data folder not found: {d}")
+    return d
+
+
+def _print_sync(results):
+    for r in results:
+        print(f"  {r.source}: {'ok' if r.ok else 'not synced'} · {r.message}")
+        rec = r.details.get("reconcile")
+        if rec:
+            print(f"    checked against your PDF: {rec['matched']} of {rec['api']} rows have the same id; quantity equal "
+                  f"{rec['qty_ok']}, amount equal {rec['total_ok']} of {rec['with_total']}; time offset "
+                  f"{', '.join(f'{h:g} h' for h in rec['hour_offsets']) or '-'}; fee in the amount sent: {rec['buy_fee_rule'] or '-'}")
+        for w in r.details.get("warnings", []):
+            print(f"    note: {w}")
+
+
+def cmd_sync(a):
+    from .datadir import DataDir
+    from .sync import SyncStore, load_secrets, sync
+    from .sync.flex import parse_flex
+    d = _data_dir(a)
+    if a.import_flex:
+        text = Path(a.import_flex).read_text(encoding="utf-8")
+        r = parse_flex(text, Path(a.import_flex).name)
+        path = SyncStore(d).save_flex(text)
+        print(f"Imported {len(r.transactions)} LYNX rows ({r.period[0]} – {r.period[1]}) into {path}")
+        return
+    secrets = load_secrets(a.secrets)
+    both = not (a.lynx or a.bitvavo)
+    pdf_rows = None
+    if both or a.bitvavo:
+        from .parsers import parse_file
+        pdf_rows = [t for p in DataDir(d).pdfs() for r in [parse_file(p)] if r.broker == "Bitvavo" for t in r.transactions] or None
+    results = sync(d, lynx=both or a.lynx, bitvavo=both or a.bitvavo, secrets=secrets, pdf_rows=pdf_rows)
+    print(f"Sync into {d / 'sync'}")
+    _print_sync(results)
+    if not any(r.ok for r in results):
+        sys.exit(1)
+
+
 def cmd_refresh(a):
     from .alerts import read_log, refresh, run_every, send_test
     from .datadir import default_data_dir
@@ -258,8 +302,13 @@ def cmd_refresh(a):
             sys.exit("Test failed: " + "; ".join(errs))
         print("Test message sent.")
         return
+    if a.sync and not a.dry_run:
+        from .sync import load_secrets, sync
+        s = load_secrets()
+        print("Sync:")
+        _print_sync(sync(d, lynx=bool(s["MEERWAARDE_IBKR_TOKEN"]), bitvavo=bool(s["MEERWAARDE_BITVAVO_KEY"]), secrets=s))
     if a.every:
-        run_every(d, a.every, send=not a.dry_run)
+        run_every(d, a.every, send=not a.dry_run, sync_first=a.sync)
         return
     r = refresh(d, send=not a.dry_run, fetch=not a.offline)
     print(f"Refreshed {r.positions} positions on {r.on}; {r.price_errors} price lookups failed.")
@@ -357,12 +406,21 @@ def main(argv=None):
     pe.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="also write the Excel workbook (default performance.xlsx)")
     pe.set_defaults(func=cmd_performance)
 
+    sy = sub.add_parser("sync", help="Download new LYNX (Flex Web Service) and Bitvavo (API) rows into the data folder")
+    sy.add_argument("--data-dir", help="the app's data folder (default ~/.local/share/meerwaarde or MEERWAARDE_DATA)")
+    sy.add_argument("--lynx", action="store_true", help="only LYNX")
+    sy.add_argument("--bitvavo", action="store_true", help="only Bitvavo")
+    sy.add_argument("--secrets", help="KEY=VALUE file with the credentials (default: environment, then MEERWAARDE_SECRETS)")
+    sy.add_argument("--import-flex", metavar="XML", help="store a Flex Query result you downloaded yourself")
+    sy.set_defaults(func=cmd_sync)
+
     rf = sub.add_parser("refresh", help="Refresh prices for the app's data folder and send alerts (run it on a schedule)")
     rf.add_argument("--data-dir", help="the app's data folder (default ~/.local/share/meerwaarde or MEERWAARDE_DATA)")
     rf.add_argument("--dry-run", action="store_true", help="evaluate and log the alerts, send nothing")
     rf.add_argument("--offline", action="store_true", help="use cached and your own prices only")
     rf.add_argument("--every", type=float, metavar="HOURS", help="keep running and refresh every HOURS (for a container)")
     rf.add_argument("--test", action="store_true", help="send a test message on the channels in alerts.json")
+    rf.add_argument("--sync", action="store_true", help="sync LYNX and Bitvavo first (credentials from the environment)")
     rf.add_argument("-v", "--verbose", action="store_true")
     rf.set_defaults(func=cmd_refresh)
 

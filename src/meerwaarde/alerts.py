@@ -268,11 +268,17 @@ def read_log(data_dir, last: int = 30) -> list[dict]:
     return [json.loads(x) for x in reversed(lines) if x.strip()]
 
 
-def run_every(data_dir, hours: float, send: bool = True, sleep=time.sleep, runs: int | None = None):
+def run_every(data_dir, hours: float, send: bool = True, sleep=time.sleep, runs: int | None = None,
+              sync_first: bool = False):
     """Keep refreshing every `hours` (for a container). `runs` limits the loop (tests)."""
     n = 0
     while runs is None or n < runs:
         try:
+            if sync_first:
+                from .sync import load_secrets, sync
+                s = load_secrets()
+                for r in sync(data_dir, lynx=bool(s["MEERWAARDE_IBKR_TOKEN"]), bitvavo=bool(s["MEERWAARDE_BITVAVO_KEY"]), secrets=s):
+                    print(f"{datetime.now():%Y-%m-%d %H:%M} sync {r.source}: {r.message}", flush=True)
             r = refresh(data_dir, send=send)
             print(f"{datetime.now():%Y-%m-%d %H:%M} refresh: {r.positions} positions, {len(r.alerts)} alerts"
                   + (f", errors: {'; '.join(r.errors)}" if r.errors else ""), flush=True)
