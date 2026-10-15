@@ -131,11 +131,15 @@ def parse_text(text: str, fmt: CsvFormat, filename: str = "") -> tuple[list[Tran
                 warns.append(f"{fmt.broker} CSV: row {n} has no quantity or price; skipped")
                 continue
             q = abs(qty) if kind == BUY else -abs(qty)
-            gross = abs(q) * price * k if k is not None else (abs(amount_eur) - abs(costs or 0) * (k or 1) if amount_eur else None)
-            if gross is None:
+            if k is not None:
+                gross, fees = abs(q) * price * k, abs(costs or 0.0) * k
+            elif amount_eur is not None:                   # EUR value given, no rate: costs in cur can't be converted
+                gross, fees = abs(amount_eur), 0.0
+                if costs:
+                    warns.append(f"{fmt.broker} CSV: row {n}: costs in {cur} left out (no exchange rate column)")
+            else:
                 warns.append(f"{fmt.broker} CSV: row {n} is in {cur} without an exchange rate or EUR amount; skipped")
                 continue
-            fees = abs(costs or 0.0) * (k if k is not None else 1.0)
             total = -(gross + fees) if kind == BUY else gross - fees
             txns.append(Transaction(**base, kind=kind, asset_class=guess_class(name, isin), qty=q, price=price, price_cur=cur,
                                     gross_eur=gross, fees_eur=fees, total_eur=total))
