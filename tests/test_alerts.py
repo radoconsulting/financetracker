@@ -156,6 +156,7 @@ def test_dry_run_sends_nothing(tmp_path):
     AlertSettings(room_below=20000, ntfy=NtfySettings("https://x/t")).save(DataDir(tmp_path).alerts)
     r = refresh(tmp_path, send=False, fetch=False, today=TODAY, post=lambda *a, **k: pytest.fail("sent"))
     assert r.alerts and not r.sent
+    assert not (DataDir(tmp_path).alerts_dir / "state.json").exists() and read_log(tmp_path) == []
 
 
 def test_settings_round_trip_and_no_secrets_in_json(tmp_path):

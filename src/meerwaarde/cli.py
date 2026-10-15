@@ -244,7 +244,7 @@ def cmd_refresh(a):
     if not r.alerts:
         print("  No alerts.")
     if a.dry_run:
-        print("Dry run: nothing sent.")
+        print("Dry run: nothing sent, state and log unchanged.")
     elif r.sent:
         print("Notification sent.")
     for e in r.errors:

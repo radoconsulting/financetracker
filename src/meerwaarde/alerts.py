@@ -232,7 +232,8 @@ class RefreshResult:
 
 def refresh(data_dir, send: bool = True, fetch: bool = True, today: date | None = None, post=None, smtp_factory=None,
             env=os.environ) -> RefreshResult:
-    """Rebuild with fresh prices, evaluate, notify, save the state and append to the log."""
+    """Rebuild with fresh prices, evaluate, notify, save the state and append to the log.
+    `send=False` is a preview: nothing is sent and the state and log are left as they were."""
     from .prices.fetch import Fetcher
     dd = DataDir(data_dir)
     settings = AlertSettings.load(dd.alerts)
@@ -244,12 +245,15 @@ def refresh(data_dir, send: bool = True, fetch: bool = True, today: date | None 
     errors = notify(settings, alerts, post, smtp_factory, env) if send and settings.channels else []
     if send and alerts and not settings.channels:
         errors.append("no channel set up (ntfy URL or e-mail server): alerts only written to the log")
-    snap.save(state)
+    if send:
+        snap.save(state)
     result = RefreshResult(snap.on, alerts, bool(send and alerts and settings.channels and not errors), errors,
                            len(rep.prices.errors), len(snap.prices) + len(snap.missing))
     log_entry = dict(at=datetime.now().isoformat(timespec="seconds"), on=snap.on, positions=result.positions,
                      price_errors=result.price_errors, sent=result.sent, errors=errors,
                      alerts=[dict(kind=a.kind, key=a.key, title=a.title, text=a.text) for a in alerts])
+    if not send:
+        return result
     dd.alerts_dir.mkdir(parents=True, exist_ok=True)
     with open(dd.alerts_dir / "log.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
