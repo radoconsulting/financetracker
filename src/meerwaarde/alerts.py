@@ -4,7 +4,8 @@
 report from the data folder with fresh prices, compares it with the previous run and notifies when:
 - the tax-free room of a person drops below a threshold (once, when it crosses);
 - a position's price moved more than a set percentage since the last alert for it (or since it was first seen);
-- a price can't be found any more.
+- a price can't be found any more;
+- the newest export or sync of a broker is older than a set number of days (a reminder to export DEGIRO, say).
 
 Settings in `<data dir>/alerts.json`; state and a log in `<data dir>/alerts/`. Secrets never go in the JSON: the SMTP
 password and the ntfy token are read from environment variables. By default messages carry no amounts (an ntfy.sh
@@ -46,6 +47,7 @@ class AlertSettings:
     room_below: float | None = 1000.0               # € of tax-free room left (per person); None = off
     move_pct: float | None = 10.0                   # % price move of a position; None = off
     missing_prices: bool = True
+    stale_days: int | None = 35                     # remind when a broker's newest data is older than this; None = off
     include_amounts: bool = False
     ntfy: NtfySettings = field(default_factory=NtfySettings)
     email: EmailSettings = field(default_factory=EmailSettings)
@@ -84,6 +86,7 @@ class Snapshot:
     rooms: dict = field(default_factory=dict)       # person name -> tax-free room left (€)
     missing: list = field(default_factory=list)     # "broker|asset" without a current price
     anchors: dict = field(default_factory=dict)
+    exports: dict = field(default_factory=dict)     # broker -> date (ISO) of its newest export file or sync download
 
     @classmethod
     def load(cls, path) -> "Snapshot | None":
@@ -98,8 +101,34 @@ class Snapshot:
         Path(path).write_text(json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def snapshot(rep, on: date | None = None) -> Snapshot:
-    s = Snapshot(on=(on or rep.tax.today).isoformat())
+def freshness(rep, data_dir) -> dict[str, str]:
+    """Per broker: the date of the newest file its rows came from (uploads, inbox, sync downloads)."""
+    dd = DataDir(data_dir)
+    by_name = {}
+    for p in dd.exports():
+        by_name[p.name.split("__", 1)[-1]] = p
+        by_name[p.name] = p
+    sync_files = {}
+    flex = dd.root / "sync" / "flex"
+    if flex.exists():
+        sync_files.update({f.name: f for f in flex.glob("*.xml")})
+    bv = dd.root / "sync" / "bitvavo" / "history.json"
+    if bv.exists():
+        sync_files["history.json"] = bv
+    out: dict[str, float] = {}
+    for t in rep.portfolio.transactions:
+        f = by_name.get(t.source) or sync_files.get(t.source)
+        if f is not None:
+            out[t.broker] = max(out.get(t.broker, 0.0), f.stat().st_mtime)
+    if "LYNX" in out and flex.exists():           # a sync without new rows still means the data is current
+        out["LYNX"] = max([out["LYNX"]] + [f.stat().st_mtime for f in flex.glob("*.xml")])
+    if "Bitvavo" in out and bv.exists():
+        out["Bitvavo"] = max(out["Bitvavo"], bv.stat().st_mtime)
+    return {b: datetime.fromtimestamp(m).date().isoformat() for b, m in out.items()}
+
+
+def snapshot(rep, on: date | None = None, exports: dict | None = None) -> Snapshot:
+    s = Snapshot(on=(on or rep.tax.today).isoformat(), exports=dict(exports or {}))
     for h in rep.portfolio.holdings():
         k = f"{h.broker}|{h.asset}"
         s.names[k] = h.name
@@ -150,6 +179,18 @@ def evaluate(prev: Snapshot | None, now: Snapshot, settings: AlertSettings) -> t
                                     f"Price €{anchor:,.4g} → €{price:,.4g}."))
                 anchor = price
         now.anchors[k] = anchor
+    if settings.stale_days:
+        today = date.fromisoformat(now.on)
+        for broker, newest in now.exports.items():
+            age = (today - date.fromisoformat(newest)).days
+            if age < settings.stale_days:
+                continue
+            before = prev.exports.get(broker) if prev else None
+            was_stale = before is not None and prev and (date.fromisoformat(prev.on) - date.fromisoformat(before)).days >= settings.stale_days
+            if not was_stale or before != newest:
+                alerts.append(Alert("stale", broker, f"{broker}: time for a new export",
+                                    f"Your newest {broker} data is {age} days old: export it again (for DEGIRO: "
+                                    "Transacties and Rekeningoverzicht as CSV) and put it in the inbox folder."))
     if settings.missing_prices:
         before = set(prev.missing) if prev else set()
         for k in now.missing:
@@ -241,7 +282,7 @@ def refresh(data_dir, send: bool = True, fetch: bool = True, today: date | None 
         Fetcher(cache_dir=dd.cache).clear_current()
     rep = dd.build(fetch=fetch, today=today)
     state = dd.alerts_dir / "state.json"
-    alerts, snap = evaluate(Snapshot.load(state), snapshot(rep, today), settings)
+    alerts, snap = evaluate(Snapshot.load(state), snapshot(rep, today, freshness(rep, dd.root)), settings)
     errors = notify(settings, alerts, post, smtp_factory, env) if send and settings.channels else []
     if send and alerts and not settings.channels:
         errors.append("no channel set up (ntfy URL or e-mail server): alerts only written to the log")

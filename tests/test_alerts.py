@@ -1,6 +1,6 @@
 """Scheduled refresh and alerts (synthetic data, no network)."""
 import json
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -172,3 +172,32 @@ def test_run_every_survives_a_failing_run(tmp_path, capsys):
     (tmp_path / "alerts.json").write_text("{not json")
     run_every(tmp_path, 24, sleep=lambda s: None, runs=2)
     assert capsys.readouterr().out.count("refresh failed") == 2
+
+
+def test_stale_export_reminder_once_and_again_after_a_new_export():
+    s = AlertSettings(room_below=None, move_pct=None, missing_prices=False, stale_days=30)
+    old = Snapshot("2026-10-14", exports={"DEGIRO": "2026-09-01", "LYNX": "2026-10-13"})
+    alerts, now = evaluate(None, old, s)
+    assert [(a.kind, a.key) for a in alerts] == [("stale", "DEGIRO")] and "43 days" in alerts[0].text
+    again, _ = evaluate(now, Snapshot("2026-10-15", exports={"DEGIRO": "2026-09-01"}), s)
+    assert again == []                                          # no daily repeat
+    fresh, now = evaluate(now, Snapshot("2026-10-16", exports={"DEGIRO": "2026-10-16"}), s)
+    assert fresh == []
+    later, _ = evaluate(now, Snapshot("2026-11-20", exports={"DEGIRO": "2026-10-16"}), s)
+    assert [a.kind for a in later] == ["stale"]
+
+
+def test_freshness_from_export_files(tmp_path):
+    import os
+    from meerwaarde.alerts import freshness
+    from meerwaarde.datadir import DataDir
+    dd = DataDir(tmp_path)
+    dd.inbox.mkdir(parents=True)
+    f = dd.inbox / "Transactions.csv"
+    f.write_text("Datum,Tijd,Product,ISIN,Beurs,Uitvoeringsplaats,Aantal,Koers,,Lokale waarde,,Waarde EUR,Wisselkoers,"
+                 "AutoFX Kosten,Transactiekosten,Totaal EUR,Order ID\n"
+                 '14-10-2026,09:04,ACME,XX0000000001,EAM,XAMS,1,"10,00",EUR,"-10,00",EUR,"-10,00",,"0,00","0,00","-10,00",o1\n')
+    stamp = datetime(2026, 9, 1, 12).timestamp()
+    os.utime(f, (stamp, stamp))
+    rep = dd.build(fetch=False, today=TODAY)
+    assert freshness(rep, tmp_path) == {"DEGIRO": "2026-09-01"}

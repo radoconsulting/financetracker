@@ -1062,6 +1062,8 @@ with tabs[11]:
         move_on = a2.checkbox("Position moves more than", value=cfg.move_pct is not None)
         move_v = a2.number_input("Percentage", min_value=0.5, step=0.5, value=float(cfg.move_pct or 10.0))
         missing_on = a3.checkbox("A price can't be found", value=cfg.missing_prices)
+        stale_on = a1.checkbox("Remind me to export when data is older than", value=cfg.stale_days is not None)
+        stale_v = a2.number_input("Days", min_value=7, max_value=365, step=1, value=int(cfg.stale_days or 35))
         amounts = a3.checkbox("Include amounts in messages", value=cfg.include_amounts,
                               help="Off by default: an ntfy.sh topic can be read by anyone who knows its name.")
         st.markdown("**ntfy** (push to your phone)")
@@ -1081,7 +1083,8 @@ with tabs[11]:
         to = e6.text_input("To (comma-separated)", value=cfg.email.to)
         tls = e7.checkbox("STARTTLS", value=cfg.email.starttls)
         if st.form_submit_button("Save alert settings"):
-            alerting.AlertSettings(room_v if room_on else None, move_v if move_on else None, missing_on, amounts,
+            alerting.AlertSettings(room_v if room_on else None, move_v if move_on else None, missing_on,
+                                   int(stale_v) if stale_on else None, amounts,
                                    alerting.NtfySettings(ntfy_url.strip(), ntfy_env.strip()),
                                    alerting.EmailSettings(host.strip(), int(port), tls, user.strip(), sender.strip(),
                                                           to.strip(), pw_env.strip())).save(DATA / "alerts.json")
@@ -1095,7 +1098,7 @@ with tabs[11]:
     if b2.button("Preview: what would be sent now", width="stretch",
                  help="Uses the prices already loaded; sends nothing and leaves the alert state unchanged."):
         prev = alerting.Snapshot.load(DATA / "alerts" / "state.json")
-        found, _ = alerting.evaluate(prev, alerting.snapshot(rep), cfg)
+        found, _ = alerting.evaluate(prev, alerting.snapshot(rep, exports=alerting.freshness(rep, DATA)), cfg)
         if found:
             for al in found:
                 st.markdown(f"- **{al.title}**: {al.message(True)}")
