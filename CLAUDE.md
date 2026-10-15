@@ -37,6 +37,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/performance.py` | XIRR, time-weighted return (Modified Dietz, monthly), value series, benchmark with the same flows (D27) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/manual.py` | ManualBook JSON: positions no export covers (funds, tak 21/23, savings, gold) → BUY/SELL transactions, prices into the PriceBook (D24) |
+| `src/meerwaarde/sync/` | Automatic sync: `flex.py` (IBKR Flex XML → rows, download), `bitvavo_api.py` (signed history, mapping, reconcile), `__init__.py` (secrets, SyncStore in `<data dir>/sync/`, merge rule) (D28) |
 | `src/meerwaarde/alerts.py`, `datadir.py` | Scheduled refresh: data folder → report, snapshot, alert rules (room, move, missing), ntfy/SMTP, state + log (D26) |
 | `src/meerwaarde/profile.py` | TaxProfile JSON: partner, ownership, per-year exemption amounts, other sales and income |
 | `src/meerwaarde/taxreport.py` | `tax_year_report()`: everything for one income year, incl. checklist and foreign accounts |
@@ -45,7 +46,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
 | `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions, Alerts, Performance); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
-| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `performance`, `refresh`, `app`; `--profile`, `--manual`, `--reynders` |
+| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `performance`, `sync`, `refresh`, `app`; `--profile`, `--manual`, `--reynders` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
 | `docs/` | domain knowledge and decisions: read the relevant file before changing behaviour |
@@ -82,6 +83,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
   a text/lines entry point (`degiro.parse_text`, `lynx.parse_lines`) so tests don't need PDFs.
 - Network failures must never break a report: price lookups return None and record an error; Gemini errors come
   back in `Suggestion.error`. Never send amounts or quantities to an external AI service (D23).
+- Credentials (IBKR token, Bitvavo key/secret, SMTP password, ntfy token) never in the repo, the data folder or a log:
+  only environment variables or a secrets file outside both (D26, D28).
 - No personal data in the repo outside `private/`: no account numbers, quantities, amounts or lists of
   holdings in code, tests or `docs/` (an instrument name as the example of a format quirk is fine). The repo
   may be pushed to GitHub; `private/` never is.

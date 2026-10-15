@@ -174,3 +174,16 @@ the brokers, so its benchmark isn't the sum of the per-broker benchmarks. Checke
 equals the profit and loss total within the currency results that are left out. Regression unchanged (the workbook's
 new Performance sheet isn't in the baseline).
 
+### D28 · Automatic sync: raw downloads in the data folder, exports win where they cover, secrets only from outside (2026-10-15)
+`sync/`. LYNX through the IBKR Flex Web Service (`sync/flex.py`), Bitvavo through `GET /v2/account/history` with a
+read-only key (`sync/bitvavo_api.py`). Downloads are stored raw in `<data dir>/sync/` and parsed on every build, like
+the uploaded PDFs, so a parser fix applies to old downloads too. Merge rule (`merge_synced`): where an uploaded export
+covers a period, it wins: for LYNX everything up to the newest statement's end (the statement's EUR totals, D6), for
+Bitvavo every transaction id in the PDF and everything up to its last row. Row-by-row matching was rejected: Flex lists
+executions where the PDF merges fills, and USD amounts convert at a different rate. Within the synced data, ids
+remove overlaps between downloads. The Bitvavo fee rule (is the fee inside `sentAmount`?) is decided by comparing with
+the PDF rows of the same id on the first sync, when at least 5 match, and stored. Credentials come from environment
+variables or a KEY=VALUE file named by `MEERWAARDE_SECRETS` / `--secrets`, outside the data folder; the app shows
+only whether they're set. Encryption at rest is item 11 (skipped for now). Checked on a real Flex file: identical
+trades, costs and stock exchange tax per day as the statement PDF; positions equal. Regression unchanged.
+

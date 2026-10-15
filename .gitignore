@@ -17,3 +17,5 @@ manual.json
 profile.json
 reynders.json
 alerts.json
+secrets.env
+*.env

@@ -52,3 +52,19 @@ uses IBKR's cost basis; for the tax the first lot uses the 31-12-2025 rate and t
 - CSPX unrealized: IBKR converts the USD cost basis at today's rate; the app uses the EUR paid at the time
   (rate of each trade block). The app's number is the real EUR result; IBKR's differs by the currency move.
 - Total profit matches *ending NAV − deposits* within about €3.
+
+## Flex Web Service (automatic sync, backlog item 12, D28)
+
+LYNX accounts are IBKR accounts: in the LYNX portal, *Performance & Reports → Flex Queries*. Create an Activity Flex
+Query (XML, period *Last 365 Calendar Days*) with Trades, Transaction Fees, Cash Transactions, Transfers, Corporate
+Actions and Open Positions; the Flex Web Service is switched on with the gear icon of *Flex Web Service Configuration*
+at the bottom of that page (token valid up to 1 year; a new token invalidates the old one).
+
+Compared with the statement PDF on a real export (15 October 2026): identical quantities, costs and
+totals per day. Differences that matter for the code (`sync/flex.py`):
+- Flex lists **executions**; the PDF merges partial fills of one order into one row.
+- Costs: the PDF's commission includes the stock exchange tax; Flex splits it into `ibCommission` and `taxes`, so the
+  sync adds them up. `netCash` equals the PDF's total.
+- EUR: Flex gives `fxRateToBase` per row (the rate of that day); the PDF statement's EUR totals per block differ by a
+  few euros on USD dividends. The statement wins for the period it covers (D6, D28).
+- Only 365 days per request; each download is kept, ids (`tradeID`, `transactionID`) make overlaps harmless.

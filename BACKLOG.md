@@ -5,17 +5,13 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–10 and 14 are done (11 skipped for now).
+Nothing open: items 1–10, 12 and 14 are done (11 skipped for now). Bitvavo sync: confirm the first live run.
 
 ## Next
 
-Empty: pick from Later (12, 13, 15) when you're ready.
+Empty: pick from Later (13, 15) when you're ready.
 
 ## Later
-
-### 12. Automatic sync · L
-Fetch new LYNX trades and statements through IBKR Flex Queries (token stored securely), and Bitvavo history
-through a read-only API key. Uploads stay possible; synced and uploaded rows are matched so nothing counts twice.
 
 ### 13. CSV imports and more brokers · L
 CSV exports of Bitvavo, DEGIRO and IBKR (sturdier than PDF layouts), then Bolero, Saxo, Trade Republic and
@@ -46,3 +42,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 9. Reynders tax · done 2026-10-15 · Reynders panel (Meerwaardebelasting tab) and `--reynders` JSON: TIS per lot, asset test or worst case; interest part out of the 10%; in the simulator, switch planner, tax report, Excel and PDF; harvesting skips subject funds; cap and deduction are settings (D25).
 - 10. Scheduled refresh + alerts · done 2026-10-15 · `meerwaarde refresh` (daily via cron/NAS task scheduler, or `--every` in a container), Alerts tab; room below threshold, price move since last alert, missing price; ntfy and SMTP with secrets from the environment; no amounts by default (D26). Not tried against a live ntfy or SMTP server.
 - 14. Performance against a benchmark · done 2026-10-15 · Performance tab, `meerwaarde performance`, Excel sheet with a chart; XIRR and time-weighted return per broker and in total from trade flows; benchmark (default iShares MSCI ACWI) with the same flows, capped at its value; daily history from Bitvavo, justETF, Yahoo, else the last trade price (D27).
+- 12. Automatic sync · done 2026-10-15 · `meerwaarde sync`, *Sync now* in the app, `refresh --sync`; LYNX via the Flex Web Service (checked against the statement PDF: identical trades, costs, positions), Bitvavo via `/account/history` with a read-only key (fee rule and time zone checked against the PDF on the first live sync); exports win where they cover; secrets only from the environment or a secrets file (D28).

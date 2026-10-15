@@ -45,3 +45,13 @@ Current: `https://api.bitvavo.com/v2/ticker/price?market=BTC-EUR` → `{"market"
 31-12-2025: hourly candles `https://api.bitvavo.com/v2/BTC-EUR/candles?interval=1h&start=..&end=..`
 (`[[ts_ms, open, high, low, close, volume], ...]`, timestamp = candle start). The candle starting
 2025-12-31 22:00 UTC (23:00 Brussels) closes at midnight: that close is the reference price.
+
+## API (automatic sync, backlog item 12, D28)
+
+Read-only key (Settings → API, permission *View* only, no Trade or Withdraw; IP whitelist recommended). `GET
+/v2/account/history` (signed: HMAC-SHA256 of timestamp + method + path with query + body; headers
+`Bitvavo-Access-Key/-Timestamp/-Signature/-Window`), 100 items per page, all types. The transaction ids are the same
+UUIDs as the PDF's *Transaction ID* column (every row of a real export has one), so overlap is removed by id.
+Not verified yet against the live API: whether a buy's `sentAmount` includes the fee and the PDF's time zone (assumed
+Europe/Brussels). The first sync compares the API rows with the PDF rows of the same id and stores the fee rule it
+finds (`<data dir>/sync/bitvavo/settings.json`).

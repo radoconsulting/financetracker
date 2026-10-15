@@ -45,6 +45,11 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 - **Performance against a benchmark**: money-weighted (XIRR) and time-weighted return per broker and in total, a
   chart of your value and net money in over time, and the same money invested on the same days in a benchmark fund
   (default iShares MSCI ACWI). **Performance** tab, or `meerwaarde performance *.pdf [--benchmark ISIN]`.
+- **Automatic sync**: new LYNX rows through the IBKR Flex Web Service and Bitvavo history through a read-only API key
+  (`meerwaarde sync`, the *Sync now* button, or `refresh --sync`). Your uploaded exports stay the source for the
+  period they cover; the sync adds what is newer. Credentials only from environment variables or a secrets file:
+  `MEERWAARDE_IBKR_TOKEN`, `MEERWAARDE_IBKR_QUERY`, `MEERWAARDE_BITVAVO_KEY`, `MEERWAARDE_BITVAVO_SECRET`
+  (`MEERWAARDE_SECRETS=path\to\secrets.env`). How to get them: docs/brokers/lynx.md and docs/brokers/bitvavo.md.
 - **Scheduled refresh and alerts**: `meerwaarde refresh` fetches fresh prices for the app's data folder and sends a
   message (ntfy push or e-mail) when the tax-free room drops below your threshold, a position moves more than a set
   percentage, or a price can't be found. Settings on the **Alerts** tab; schedule it with cron, the NAS task
@@ -172,11 +177,15 @@ services:
     volumes: ["/volume1/docker/meerwaarde:/data"]
   meerwaarde-refresh:
     image: meerwaarde
-    command: ["meerwaarde", "refresh", "--data-dir", "/data", "--every", "24"]
+    command: ["meerwaarde", "refresh", "--data-dir", "/data", "--every", "24", "--sync"]
     volumes: ["/volume1/docker/meerwaarde:/data"]
     environment:
       MEERWAARDE_NTFY_TOKEN: ${MEERWAARDE_NTFY_TOKEN:-}
       MEERWAARDE_SMTP_PASSWORD: ${MEERWAARDE_SMTP_PASSWORD:-}
+      MEERWAARDE_IBKR_TOKEN: ${MEERWAARDE_IBKR_TOKEN:-}
+      MEERWAARDE_IBKR_QUERY: ${MEERWAARDE_IBKR_QUERY:-}
+      MEERWAARDE_BITVAVO_KEY: ${MEERWAARDE_BITVAVO_KEY:-}
+      MEERWAARDE_BITVAVO_SECRET: ${MEERWAARDE_BITVAVO_SECRET:-}
     healthcheck: {disable: true}
 ```
 
