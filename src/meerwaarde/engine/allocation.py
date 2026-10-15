@@ -81,9 +81,9 @@ def exposure_for(h, fetcher=None, overrides: dict | None = None, errors: list | 
     bucket = CLASS_BUCKET.get(h.asset_class, "Other")
     if o:
         countries = _norm(o.get("countries") or {"Unknown": 1})
-        return Exposure(_norm(o.get("asset_class") and {o["asset_class"]: 1} or {bucket: 1}) if isinstance(o.get("asset_class"), str)
-                        else _norm(o.get("asset_class") or {bucket: 1}),
-                        countries, _norm(o.get("sectors") or {"Unknown": 1}),
+        ac = o.get("asset_class")
+        ac = {ac: 1.0} if isinstance(ac, str) else (ac or {bucket: 1.0})
+        return Exposure(_norm(ac), countries, _norm(o.get("sectors") or {"Unknown": 1}),
                         _norm(o.get("currencies") or _currencies_from(countries)),
                         [tuple(t) for t in o.get("top") or []], "your breakdown", str(o.get("as_of") or ""))
     if h.asset_class == "Cash/FX":
