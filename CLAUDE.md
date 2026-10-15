@@ -36,6 +36,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/engine/reynders.py` | Reynders tax on bond funds: TIS / asset test / worst case per lot, ReyndersBook JSON, deduction from the 10% (D25) |
 | `src/meerwaarde/engine/performance.py` | XIRR, time-weighted return (Modified Dietz, monthly), value series, benchmark with the same flows (D27) |
 | `src/meerwaarde/engine/allocation.py` | Look-through exposure (asset class, region, country, sector, currency), top holdings, fund overlap; justETF composition, `exposure.json` overrides (D30) |
+| `src/meerwaarde/engine/networth.py` | Net worth per month: positions × price series, cash per broker rebuilt from the rows (D33) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/manual.py` | ManualBook JSON: positions no export covers (funds, tak 21/23, savings, gold) → BUY/SELL transactions, prices into the PriceBook (D24) |
 | `src/meerwaarde/sync/` | Automatic sync: `flex.py` (IBKR Flex XML → rows, download), `bitvavo_api.py` (signed history, mapping, reconcile), `__init__.py` (secrets, SyncStore in `<data dir>/sync/`, merge rule) (D28) |

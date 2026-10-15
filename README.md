@@ -53,6 +53,8 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   period they cover; the sync adds what is newer. Credentials only from environment variables or a secrets file:
   `MEERWAARDE_IBKR_TOKEN`, `MEERWAARDE_IBKR_QUERY`, `MEERWAARDE_BITVAVO_KEY`, `MEERWAARDE_BITVAVO_SECRET`
   (`MEERWAARDE_SECRETS=path\to\secrets.env`). How to get them: docs/brokers/lynx.md and docs/brokers/bitvavo.md.
+- **Net worth over time**: everything you own per month, split by broker or asset class, cash included where the
+  exports have the deposits (Overview tab, Excel sheet *Net worth*).
 - **Allocation look-through**: exposure by asset class, region, currency and sector, looking through your ETFs (justETF
   composition), the largest underlying holdings across everything you own, and the overlap between your funds.
   **Allocation** tab, or `meerwaarde allocation *.pdf`. Your own breakdown for a fund goes in `exposure.json`.

@@ -11,10 +11,6 @@ Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in o
 
 Agreed on 15 October 2026 (from the feature review), in this order.
 
-### 16. Net worth over time · S
-One history of everything: all brokers, manual positions and cash, per month, with the split by broker and by asset
-class; builds on the performance value series.
-
 ### 17. Fees and costs dashboard · S
 Per year and broker: commissions, stock exchange tax, AutoFX/conversion costs, connection fees, and the running costs
 of funds (TER drag on the value held); what they add up to over 10 years.
@@ -75,3 +71,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 12. Automatic sync · done 2026-10-15 · `meerwaarde sync`, *Sync now* in the app, `refresh --sync`; LYNX via the Flex Web Service (checked against the statement PDF: identical trades, costs, positions), Bitvavo via `/account/history` with a read-only key (fee rule and time zone checked against the PDF on the first live sync); exports win where they cover; secrets only from the environment or a secrets file (D28).
 - 13. CSV imports and more brokers · done 2026-10-15 · DEGIRO Transacties/Rekeningoverzicht and Bitvavo as CSV (through the PDF parsers' row logic), inbox folder, reminder when an export is older than 35 days; other brokers through a column mapping on the Data tab instead of guessed formats; IBKR CSV not needed (Flex). Not yet checked against real CSV exports (D29).
 - 15. Allocation look-through · done 2026-10-15 · Allocation tab, `meerwaarde allocation`, Excel sheet; asset class, region, currency (approximate), sector; look-through top holdings and fund overlap from the top 10 (lower bounds); justETF composition, own breakdown in exposure.json (D30).
+- 16. Net worth over time · done 2026-10-15 · Overview tab chart (by broker or asset class), Excel sheet with a chart; positions from the price series, cash per broker rebuilt from the rows and left out where deposits are missing (D33).

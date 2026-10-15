@@ -223,3 +223,12 @@ on 31-12-2025 (units held that day × the reference prices: a direct check of th
 meerwaardebelasting). Shown in the Tax report tab, its Excel (sheet Checks), PDF and `meerwaarde tax-report`; the
 checklist quotes the broker's code 1444-11 amount. Regression unchanged.
 
+### D33 · Net worth: positions from the value series, cash rebuilt from the rows, left out when deposits are missing (2026-10-15)
+`engine/networth.py`. Positions: units held per month-end × that day's price (`PriceSeries`, as in D27), all classes
+except Cash/FX lots. Cash per broker: deposits − withdrawals + trade totals + income + fees + bond payouts (the
+`redemption` row; the bond's 'sale' row has total 0). A broker's cash is left out (with a note) when it ends below
+−€250 or dips below 2% of its deposits: missing deposits pile up, while a purchase booked before its deposit only dips
+for a while (shown as 0). Foreign cash stays at the euro amount of each trade (not revalued). Checked on the real
+exports: DEGIRO's rebuilt cash ends within the known USD valuation gap of the account statement's balance. Regression
+unchanged.
+

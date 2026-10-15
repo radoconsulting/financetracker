@@ -33,7 +33,7 @@ def test_positions_and_cash_per_month():
             tx(date(2026, 1, 5), BUY, "X", qty=8, gross_eur=800, total_eur=-805, asset_class="ETF"),
             tx(date(2026, 2, 10), DIVIDEND, "X", amount_eur=10.0, asset_class="ETF")]
     hist = {"X": {date(2026, 1, 5): 100.0, date(2026, 1, 31): 105.0, date(2026, 2, 28): 110.0}}
-    nw = networth(make(txns, {"X": 120.0}, hist))
+    nw = networth(make(txns, {"X": 120.0}, hist), fetch=True)
     assert nw.dates == [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 15)]
     assert nw.cash["A"] == [195.0, 205.0, 205.0]
     assert nw.by_class["Equity"] == [840.0, 880.0, 960.0]
