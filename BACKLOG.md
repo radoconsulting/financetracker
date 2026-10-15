@@ -5,11 +5,11 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–10 are done (11 skipped for now). Next in line: 12.
+Nothing open: items 1–10 and 14 are done (11 skipped for now).
 
 ## Next
 
-Empty: pick from Later (12–15) when you're ready.
+Empty: pick from Later (12, 13, 15) when you're ready.
 
 ## Later
 
@@ -20,10 +20,6 @@ through a read-only API key. Uploads stay possible; synced and uploaded rows are
 ### 13. CSV imports and more brokers · L
 CSV exports of Bitvavo, DEGIRO and IBKR (sturdier than PDF layouts), then Bolero, Saxo, Trade Republic and
 Keytrade. Each parser with tests on anonymised sample files.
-
-### 14. Performance against a benchmark · M
-Money-weighted (XIRR) and time-weighted return per broker and in total, a chart of portfolio value over time,
-and the same deposits invested in a benchmark such as MSCI ACWI for comparison.
 
 ### 15. Allocation look-through · M
 Exposure by region, sector, currency and asset class, looking through ETFs to their holdings, plus the overlap
@@ -49,3 +45,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 8. Manual positions · done 2026-10-14 · Manual positions tab and `--manual` JSON: funds, tak 21/23, savings, gold as ordinary FIFO transactions under their own broker label; price now and 31-12-2025 value per position; Excel sheet; year-end harvesting skips insurance (D24). Tak 21 roerende voorheffing on early surrender not handled.
 - 9. Reynders tax · done 2026-10-15 · Reynders panel (Meerwaardebelasting tab) and `--reynders` JSON: TIS per lot, asset test or worst case; interest part out of the 10%; in the simulator, switch planner, tax report, Excel and PDF; harvesting skips subject funds; cap and deduction are settings (D25).
 - 10. Scheduled refresh + alerts · done 2026-10-15 · `meerwaarde refresh` (daily via cron/NAS task scheduler, or `--every` in a container), Alerts tab; room below threshold, price move since last alert, missing price; ntfy and SMTP with secrets from the environment; no amounts by default (D26). Not tried against a live ntfy or SMTP server.
+- 14. Performance against a benchmark · done 2026-10-15 · Performance tab, `meerwaarde performance`, Excel sheet with a chart; XIRR and time-weighted return per broker and in total from trade flows; benchmark (default iShares MSCI ACWI) with the same flows, capped at its value; daily history from Bitvavo, justETF, Yahoo, else the last trade price (D27).

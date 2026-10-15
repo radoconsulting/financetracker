@@ -160,3 +160,17 @@ secrets only from environment variables named in `alerts.json`. Messages carry n
 (public ntfy.sh topics are readable by anyone who knows the name); position names are still in them. Send errors are
 returned and logged, never raised. Not verified against a live ntfy server or SMTP server here (both tested with fakes).
 
+### D27 · Performance from trade flows; benchmark with the same flows, capped at its value (2026-10-15)
+`engine/performance.py`. Flows come from the trades (purchase = money in, sale and income = money out, standalone fee =
+money in), not from deposits into the account, because not every export has those and cash at the broker would dilute
+the return. Cash/FX positions are left out on both sides (their EUR is already in the sale flows). Units: own-wallet
+withdrawals keep the units and coins coming back are matched, as in `Portfolio`. Bond redemptions use the payout from
+the realized row. XIRR by Newton with a bisection fallback. Time-weighted: Modified Dietz per month between month-end
+values, chained; the first point is the first trade day (value after its purchases) so no period starts empty, and
+periods with less than €100 at work are skipped (a €1 test deposit would otherwise swing the chain). The benchmark buys
+with every euro in and sells for every euro out on the same day, but never pays out more than it is worth (otherwise a
+broker where you took out more than you put in ends negative); its XIRR uses what it really paid out. The "All" line pools
+the brokers, so its benchmark isn't the sum of the per-broker benchmarks. Checked on the real exports: gain per broker
+equals the profit and loss total within the currency results that are left out. Regression unchanged (the workbook's
+new Performance sheet isn't in the baseline).
+

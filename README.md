@@ -42,6 +42,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   provider publishes (or the fund's bond share); that part is taken out of the 10%. Enter the funds on the
   Meerwaardebelasting tab (*Reynders tax* panel) or in a JSON file for `--reynders`; the simulator, switch planner and
   yearly report include it.
+- **Performance against a benchmark**: money-weighted (XIRR) and time-weighted return per broker and in total, a
+  chart of your value and net money in over time, and the same money invested on the same days in a benchmark fund
+  (default iShares MSCI ACWI). **Performance** tab, or `meerwaarde performance *.pdf [--benchmark ISIN]`.
 - **Scheduled refresh and alerts**: `meerwaarde refresh` fetches fresh prices for the app's data folder and sends a
   message (ntfy push or e-mail) when the tax-free room drops below your threshold, a position moves more than a set
   percentage, or a price can't be found. Settings on the **Alerts** tab; schedule it with cron, the NAS task

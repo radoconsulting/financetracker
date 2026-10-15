@@ -22,6 +22,15 @@
 Other sites that worked by hand during the analysis but aren't wired in: stockanalysis.com (US closes),
 statmuse.com (historical US closes), beursduivel.be (Euronext quotes, sometimes blocked).
 
+## Daily history (performance, D27)
+
+`PriceBook.history(asset, class, start, end)` returns a daily EUR series and its source: Bitvavo daily candles for
+crypto (1440 per call; delisted coins answer 400 and fall back), justETF `performance-chart` for ETFs and funds, Yahoo
+Finance daily closes for the rest (converted with ECB rates per day). Cached for a day (the key holds the end date).
+Positions without a series are valued at their last trade price on or before the day, labelled approximate. Tried live
+on 15 October 2026: most positions had a series (from all three sources; delisted coins didn't); the first run took about a
+minute, later runs come from the cache.
+
 ## Cache
 
 `<data dir>/cache/now/` (6 h) and `<data dir>/cache/history/` (1 year; the ECB zip is refreshed daily).
