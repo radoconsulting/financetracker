@@ -16,6 +16,7 @@ from meerwaarde.engine.portfolio import Portfolio, PortfolioOptions
 from meerwaarde.engine.tax import TaxCalculator, TaxRules
 from meerwaarde.engine.harvest import DEFAULT_COMMISSION, CostModel, plan_harvest
 from meerwaarde.engine.income_tax import CATEGORIES
+from meerwaarde.engine.reynders import Reynders, ReyndersBook, ReyndersFund, ReyndersRules
 from meerwaarde.engine.switch import (compare, default_sources, funds_from_json, funds_to_json, net_spread, source_fund,
                                       sources_for, spread_plan)
 from meerwaarde.funds import CATALOG, WORLD_TARGETS, Fund, lookup
@@ -39,6 +40,7 @@ PRICES_CSV = DATA / "prices.csv"
 PROFILE = DATA / "profile.json"
 FUNDS_JSON = DATA / "funds.json"
 MANUAL_JSON = DATA / "manual.json"
+REYNDERS_JSON = DATA / "reynders.json"
 CACHE = DATA / "cache"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
@@ -126,6 +128,12 @@ with st.sidebar:
                                      "carried forward from earlier years is added automatically (Tax years tab).")
     original = st.toggle("Use the original price when it's higher than 31-12-2025", value=True,
                          help="Allowed for sales until the end of 2030, and only to reduce a gain.")
+    with st.expander("Reynders tax settings"):
+        ry_cap = st.toggle("Limit the interest part to the real gain", value=True, key="ry-cap",
+                           help="The taxed interest part is never more than what you really gained on the lot (sale price - "
+                                "purchase price, without costs); a sale at a loss pays nothing. Check with your adviser.")
+        ry_deduct = st.toggle("Don't tax the interest part again at 10%", value=True, key="ry-deduct",
+                              help="The part taxed as Reynders income is taken out of the gain for the meerwaardebelasting.")
     if st.button("Refresh prices", width="stretch"):
         Fetcher(cache_dir=CACHE).clear_current()
         st.toast("Current prices will be fetched again")
@@ -241,7 +249,9 @@ pb = PriceBook(statements, fetch=fetch, cache_dir=CACHE, reference_date=rules.re
 manual.apply_prices(pb)
 if PRICES_CSV.exists():
     pb.load_overrides_csv(PRICES_CSV.read_text())
-calc = TaxCalculator(pf, pb, rules)
+reynders_book = ReyndersBook.load(REYNDERS_JSON)
+calc = TaxCalculator(pf, pb, rules, reynders=Reynders(reynders_book, ReyndersRules(cap_at_gain=ry_cap, deduct_from_cgt=ry_deduct),
+                                                      pb.eur_per))
 rep = Report(pf, pb, calc, parse_warnings + manual.warnings() + pf.warnings, profile, manual)
 hh = profile.household
 
@@ -253,6 +263,67 @@ brokers = pf.brokers()
 
 def money(v):
     return "—" if v is None or pd.isna(v) else f"€{v:,.0f}"
+
+
+def reynders_panel():
+    with st.expander("Reynders tax (bond funds)", expanded=bool(rep.reynders_flags())):
+        st.caption("Funds with more than 10% in bonds (25% for units bought before 2018) pay 30% on the interest part of "
+                   "the gain when sold, with no exemption. The best basis is the TIS (taxable income per share) that the "
+                   "fund provider publishes, usually with the Belgian tax information or the distribution/tax documents on "
+                   "the fund page (iShares, Vanguard, Amundi). Enter the TIS on or just before your purchase dates and the "
+                   "latest one. Without TIS, the bond share of the fund (asset test) is used; without either, the whole "
+                   "gain counts (worst case). Distributing funds are often still taxed in practice: mark a fund as not "
+                   "subject only if its prospectus says so.")
+        for f in rep.reynders_flags():
+            st.warning(f)
+        fund_like = {h.asset: h for h in pf.holdings() if h.asset_class in ("Bond ETF", "Fund", "ETF", "Bond")}
+        assets = sorted(set(reynders_book.funds) | {a for a, h in fund_like.items() if h.asset_class == "Bond ETF"})
+        options = sorted(set(fund_like) | set(assets))
+        rows = []
+        for a in assets:
+            f = reynders_book.funds.get(a)
+            h = fund_like.get(a)
+            rows.append(dict(asset=a, name=h.name if h else "", subject=bool(f.subject) if f else False,
+                             currency=f.currency if f else "EUR",
+                             debt_pct=(f.debt_pct * 100 if f and f.debt_pct is not None else None),
+                             source=f.source if f else "", note=f.note if f else ""))
+        fdf = pd.DataFrame(rows, columns=["asset", "name", "subject", "currency", "debt_pct", "source", "note"])
+        st.markdown("**Funds**")
+        fed = st.data_editor(fdf, num_rows="dynamic", hide_index=True, width="stretch", key="ry-funds", column_config={
+            "asset": st.column_config.SelectboxColumn("Fund", options=options, required=True),
+            "name": st.column_config.TextColumn("Name", disabled=True),
+            "subject": st.column_config.CheckboxColumn("Subject to Reynders tax"),
+            "currency": st.column_config.TextColumn("TIS currency", help="Currency the provider publishes the TIS in (EUR, USD...)"),
+            "debt_pct": st.column_config.NumberColumn("Bond share (%)", min_value=0.0, max_value=100.0, format="%.1f",
+                                                      help="For the asset test, when you have no TIS"),
+            "source": st.column_config.LinkColumn("Where you found it"), "note": "Note"})
+        tis_rows = [dict(asset=a, date=d, value=v) for a, f in sorted(reynders_book.funds.items()) for d, v in sorted(f.tis)]
+        tdf = pd.DataFrame(tis_rows, columns=["asset", "date", "value"])
+        tdf["date"] = pd.to_datetime(tdf["date"]).dt.date
+        st.markdown("**TIS values** (per share, in the fund's TIS currency)")
+        ted = st.data_editor(tdf, num_rows="dynamic", hide_index=True, width="stretch", key="ry-tis", column_config={
+            "asset": st.column_config.SelectboxColumn("Fund", options=options, required=True),
+            "date": st.column_config.DateColumn("Date"), "value": st.column_config.NumberColumn("TIS", format="%.6g")})
+        if st.button("Save Reynders tax data"):
+            book = ReyndersBook()
+            for r in fed.dropna(subset=["asset"]).itertuples():
+                cur = str(r.currency).strip().upper() if pd.notna(r.currency) and str(r.currency).strip() else "EUR"
+                book.funds[r.asset] = ReyndersFund(r.asset, bool(r.subject), cur,
+                                                   None if pd.isna(r.debt_pct) else float(r.debt_pct) / 100, [],
+                                                   "" if pd.isna(r.source) else str(r.source),
+                                                   "" if pd.isna(r.note) else str(r.note))
+            for r in ted.dropna(subset=["asset", "date", "value"]).itertuples():
+                book.funds.setdefault(r.asset, ReyndersFund(r.asset)).tis.append((pd.Timestamp(r.date).date(), float(r.value)))
+            book.save(REYNDERS_JSON)
+            st.toast("Saved")
+            st.rerun()
+        rt = rep.reynders_table()
+        if not rt.empty:
+            st.dataframe(rt, hide_index=True, width="stretch", column_config={
+                "price_eur": st.column_config.NumberColumn("Price", format="%.6g"),
+                "base_eur": st.column_config.NumberColumn("Interest part", format=EUR),
+                "tax_eur": st.column_config.NumberColumn("Reynders tax (30%)", format=EUR)})
+        st.caption(f"Saved in {REYNDERS_JSON}. Status Open = if you sold everything today.")
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
@@ -359,6 +430,10 @@ with tabs[2]:
     c[2].metric("Exemption", money(summ["exemption"]),
                 help=("Per person. " if not hh.single else "") + (f"Includes {money(carried)} carried forward from earlier years." if carried else "Nothing carried forward from earlier years."))
     c[3].metric("Meerwaardebelasting", money(summ["tax"]), help="10% of the net gain above the exemption, per person")
+    ry_all = rep.reynders_summary(sold_lines + open_lines)
+    if ry_all["base"]:
+        st.info(f"Plus Reynders tax on bond funds: {money(ry_all['tax'])} (30% of an interest part of {money(ry_all['base'])}, "
+                "no exemption). That part is " + ("not taxed again at 10%." if ry_deduct else "also counted in the 10% gain."))
     if not hh.single:
         st.dataframe(pd.DataFrame([dict(person=hh.name(pid), net=pp["net"], exemption=pp["exemption"], taxable=pp["taxable"], tax=pp["tax"])
                                    for pid, pp in summ["people"].items()]), hide_index=True, width="stretch", column_config={
@@ -382,6 +457,7 @@ with tabs[2]:
     if (lines_df.missing != "").any():
         st.warning("Some lines are missing a price, so their gain is incomplete. Add the price on the Prices tab.")
     st.download_button("Download (CSV)", lines_df.to_csv(index=False), "meerwaardebelasting.csv", "text/csv")
+    reynders_panel()
     with st.expander("How it's calculated"):
         st.markdown("\n".join(f"- {t}" for t in RULES_TEXT))
 
@@ -430,6 +506,9 @@ with tabs[3]:
     if not hh.single:
         st.caption(" · ".join(f"{hh.name(pid)}: room {money(max(0.0, pp['room']))}, tax {money(pp['tax'])}"
                               for pid, pp in summ["people"].items()))
+    if sim.reynders.get("base"):
+        st.warning(f"These sales also pay Reynders tax: {money(sim.reynders['tax'])} (30% of the interest part of the bond "
+                   f"funds, {money(sim.reynders['base'])}). It has no exemption, so 'Max without tax' only covers the 10%.")
 
     out_df = sim.positions
     st.dataframe(out_df, hide_index=True, width="stretch", column_config={
@@ -675,6 +754,12 @@ with tabs[6]:
     if not ytr.sales.empty:
         with st.expander(f"Sales in {ry} ({len(ytr.sales)})"):
             st.dataframe(ytr.sales, hide_index=True, width="stretch")
+    if ytr.reynders.get("base"):
+        st.markdown(f"**Reynders tax** on bond funds sold: {money(ytr.reynders['tax'])} (30% of an interest part of "
+                    f"{money(ytr.reynders['base'])}, no exemption)"
+                    + ("" if hh.single else " · " + " · ".join(f"{name} {money(ytr.reynders['people'][pid]['tax'])}"
+                                                              for pid, name in ytr.persons)))
+        st.dataframe(ytr.reynders_detail, hide_index=True, width="stretch")
 
     st.subheader("Dividends and interest")
     for pid, name in ytr.persons:
