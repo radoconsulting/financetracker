@@ -55,3 +55,10 @@ UUIDs as the PDF's *Transaction ID* column (every row of a real export has one),
 Not verified yet against the live API: whether a buy's `sentAmount` includes the fee and the PDF's time zone (assumed
 Europe/Brussels). The first sync compares the API rows with the PDF rows of the same id and stores the fee rule it
 finds (`<data dir>/sync/bitvavo/settings.json`).
+
+## CSV export (backlog item 13)
+
+Header: `Timezone, Date, Time, Type, Currency, Amount, Quote Currency, Quote Price, Received / Paid Currency,
+Received / Paid Amount, Fee currency, Fee amount, Status, Transaction ID, Address`. `bitvavo.csv_rows()` turns it into
+the PDF reader's row dicts (amount and unit joined, as printed in the PDF), so `parse_rows` is shared. Not checked
+against a real CSV export yet (layout from Bitvavo's export as known; invented test file).

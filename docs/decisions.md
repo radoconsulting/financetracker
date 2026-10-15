@@ -187,3 +187,14 @@ variables or a KEY=VALUE file named by `MEERWAARDE_SECRETS` / `--secrets`, outsi
 only whether they're set. Encryption at rest is item 11 (skipped for now). Checked on a real Flex file: identical
 trades, costs and stock exchange tax per day as the statement PDF; positions equal. Regression unchanged.
 
+### D29 · CSV imports: shared row logic, an inbox folder, a column mapping instead of guessed formats (2026-10-15)
+DEGIRO has no official API; the unofficial web endpoints need the full login with 2FA secret and may get an account
+blocked, so DEGIRO stays export-based: CSV (sturdier than the PDF layout) read from uploads or `<data dir>/inbox/`, and
+an alert (`stale_days`, default 35) when a broker's newest export or sync is older than that. The CSV readers feed the
+existing row logic (`degiro_account.parse_rows`, `bitvavo.parse_rows`) instead of copying it. Brokers Sander doesn't
+use (Bolero, Saxo, Keytrade, Trade Republic) get no guessed parser: `parsers/mapped.py` reads any CSV through a column
+mapping made once on the Data tab and recognised again by its exact header; a mapped format wins over the built-in
+detection. IBKR's CSV isn't added: the Flex sync (D28) covers it better. Freshness = the modification date of the newest
+file a broker's rows came from (or its newest sync download), not the date of its last transaction, so a quiet month
+doesn't trigger the reminder. Regression unchanged.
+

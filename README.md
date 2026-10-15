@@ -45,6 +45,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 - **Performance against a benchmark**: money-weighted (XIRR) and time-weighted return per broker and in total, a
   chart of your value and net money in over time, and the same money invested on the same days in a benchmark fund
   (default iShares MSCI ACWI). **Performance** tab, or `meerwaarde performance *.pdf [--benchmark ISIN]`.
+- **CSV exports and an inbox folder**: DEGIRO (Transacties, Rekeningoverzicht) and Bitvavo also as CSV; files saved in
+  `<data folder>/inbox/` are read without uploading, and an alert reminds you when a broker's newest export is older
+  than 35 days. Other brokers (Bolero, Saxo, Keytrade, …): map their CSV columns once on the **Data** tab.
 - **Automatic sync**: new LYNX rows through the IBKR Flex Web Service and Bitvavo history through a read-only API key
   (`meerwaarde sync`, the *Sync now* button, or `refresh --sync`). Your uploaded exports stay the source for the
   period they cover; the sync adds what is newer. Credentials only from environment variables or a secrets file:

@@ -73,3 +73,18 @@ Unknown descriptions are left out with a warning.
 - Number of trades equals the Transacties export.
 - Cash identity (deposits − withdrawals + trades incl. stock exchange tax + income + fees + bond payout) matches
   within about €22: the EUR value given to USD dividends that were spent on USD trades instead of converted.
+
+# CSV exports · `parsers/degiro_csv.py` (backlog item 13, D29)
+
+Both exports also come as CSV (Inbox → Transacties / Rekeningoverzicht → Export → CSV); there is no API (D29).
+- Columns are found by header name, Dutch or English (`Datum/Date`, `Aantal/Quantity`, `Waarde EUR/Value EUR`,
+  `AutoFX Kosten/AutoFX Fee`, `Totaal EUR/Total EUR`, `Order ID`); a value column is followed by an unnamed currency
+  column. Separator `,` or `;`; numbers in either notation (`number()`).
+- Transacties rows become the same transactions as the PDF (`gross_eur = |Waarde EUR|`, costs = AutoFX + transaction
+  costs, `total_eur = Totaal EUR`), plus the order id in `ref`. The same trade in a PDF and a CSV counts once
+  (`combine()` compares the values, not the file type).
+- Rekeningoverzicht rows are converted to the PDF reader's row dicts and go through `degiro_account.parse_rows`, so
+  every rule above applies; English descriptions were added to `RULES` (Dividend Tax, Belgian Transaction Tax,
+  Deposit, Withdrawal, Interest, FX Debit as the conversion rate) as best-known equivalents.
+- Not checked against a real CSV export yet: written from DEGIRO's documented layout with invented test files.
+  The first real export is the check (compare with the PDF figures, as was done for LYNX Flex).
