@@ -12,6 +12,7 @@ sides. With the value today that gives:
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -126,12 +127,27 @@ def units_over_time(portfolio, excluded=EXCLUDED) -> dict[tuple, list[tuple[date
 
 
 def _at(steps: list, on: date, default=0.0):
-    v = default
-    for d, x in steps:
-        if d > on:
-            break
-        v = x
-    return v
+    i = bisect_right(steps, (on, math.inf))
+    return steps[i - 1][1] if i else default
+
+
+class _Series:
+    """Sorted (date, value) pairs; `at(day)` = the last value on or before the day."""
+
+    def __init__(self, pairs):
+        pairs = sorted(pairs)
+        self.days = [d for d, _ in pairs]
+        self.values = [v for _, v in pairs]
+
+    def __bool__(self):
+        return bool(self.days)
+
+    def at(self, on: date):
+        i = bisect_right(self.days, on)
+        return self.values[i - 1] if i else None
+
+    def first(self):
+        return self.values[0] if self.values else None
 
 
 def month_ends(start: date, end: date) -> list[date]:
@@ -153,14 +169,13 @@ class PriceSeries:
 
     def __init__(self, rep, start: date, end: date, fetch: bool = True):
         self.rep, self.start, self.end = rep, start, end
-        self.series: dict[str, dict] = {}
+        self.series: dict[str, _Series] = {}
         self.source: dict[str, str] = {}
         self.trades: dict[str, list] = defaultdict(list)
         for t in rep.portfolio.transactions:
             if t.kind in (BUY, SELL) and t.gross_eur and t.qty:
                 self.trades[t.asset].append((t.ts.date(), abs(t.gross_eur / t.qty)))
-        for v in self.trades.values():
-            v.sort()
+        self.trades = {a: _Series(v) for a, v in self.trades.items()}
         self.now = {}
         for h in rep.portfolio.holdings():
             p = rep.prices.now(h)
@@ -174,30 +189,20 @@ class PriceSeries:
             return
         s, src = self.rep.prices.history(asset, self.classes.get(asset, ""), self.start - timedelta(days=7), self.end) \
             if self.fetch else ({}, "")
-        self.series[asset] = dict(sorted(s.items()))
+        self.series[asset] = _Series(s.items())
         self.source[asset] = src or "last trade price (approximate)"
 
     def price(self, asset: str, on: date) -> float | None:
         if on >= self.end and asset in self.now:
             return self.now[asset]
         self._load(asset)
-        s = self.series[asset]
-        if s:
-            best = None
-            for d, v in s.items():
-                if d > on:
-                    break
-                best = v
-            if best is not None:
-                return best
+        v = self.series[asset].at(on)
+        if v is not None:
+            return v
         tr = self.trades.get(asset)
         if tr:
-            best = None
-            for d, v in tr:
-                if d > on:
-                    break
-                best = v
-            return best if best is not None else tr[0][1]
+            v = tr.at(on)
+            return v if v is not None else tr.first()
         return self.now.get(asset)
 
 
@@ -275,15 +280,11 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
 
     # benchmark prices
     bseries, bsrc = rep.prices.history(benchmark[0], "ETF", start - timedelta(days=7), end) if fetch else ({}, "")
-    bseries = dict(sorted(bseries.items()))
+    bseries = _Series(bseries.items())
 
     def bprice(on: date):
-        best = None
-        for d, v in bseries.items():
-            if d > on:
-                break
-            best = v
-        return best if best is not None else (next(iter(bseries.values())) if bseries else None)
+        v = bseries.at(on)
+        return v if v is not None else bseries.first()
 
     brokers = sorted({f.broker for f in flows})
     lines, points = [], {}
