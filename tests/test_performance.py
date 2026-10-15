@@ -122,3 +122,16 @@ def test_benchmark_never_pays_out_more_than_it_is_worth():
     l = perf.line("All")
     assert l.benchmark_value == pytest.approx(0.0) and l.benchmark_xirr == pytest.approx(0.0, abs=1e-6)
     assert any("took out more" in n for n in perf.notes)
+
+
+def test_excel_performance_sheet_has_table_series_and_chart():
+    import io
+    from openpyxl import load_workbook
+    from meerwaarde.export import to_xlsx
+    hist = {date(2025, 1, 1): 100.0, date(2025, 12, 31): 120.0}
+    rep = make([tx(date(2025, 1, 1), BUY, "X", 10, -1000, 1000)], now={"X": 120.0}, history={"X": hist, "B": hist})
+    perf = performance(rep, benchmark=("B", "Bench"))
+    ws = load_workbook(io.BytesIO(to_xlsx(rep, perf=perf)))["Performance"]
+    assert ws["A1"].value == "Broker" and ws["A2"].value == "All"
+    assert str(ws["E2"].value).startswith("=")                     # gain is a formula
+    assert len(ws._charts) == 1

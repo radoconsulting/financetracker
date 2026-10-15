@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Manual positions", "Prices", "How calculated")
+          "Year-end", "Switch", "Reynders tax", "Performance", "Manual positions", "Prices", "How calculated")
 
 
 @dataclass
@@ -215,6 +215,43 @@ def _reynders_sheet(ws, table, rate: float, notes: list[str]) -> None:
     _write(ws, r + 2, 2, f"=B{r + 1}*B{r}", BOLD, EUR, border=TOTAL_BORDER)
     for i, n in enumerate(notes):
         _write(ws, r + 4 + i, 1, n, NOTE)
+
+
+PERF = [
+    Col("broker", "Broker", width=10), Col("invested", "Money in (€)", EUR, 15), Col("returned", "Money out (€)", EUR, 15),
+    Col("value", "Value today (€)", EUR, 15),
+    Col("gain", "Gain (€)", EUR, 14, "={value}{r}+{returned}{r}-{invested}{r}"),
+    Col("xirr", "Money-weighted (XIRR, per year)", "0.0%", 16), Col("twr", "Time-weighted, total", "0.0%", 14),
+    Col("twr_annual", "Time-weighted, per year", "0.0%", 14), Col("benchmark_value", "Benchmark value today (€)", EUR, 17),
+    Col("benchmark_xirr", "Benchmark XIRR (per year)", "0.0%", 15),
+]
+PERF_SERIES = [
+    Col("date", "Date", DATE, 11), Col("value", "Value (€)", EUR, 15), Col("invested", "Net money in (€)", EUR, 15),
+    Col("benchmark", "Benchmark (€)", EUR, 15),
+]
+
+
+def _performance_sheet(ws, rep: Report, perf) -> None:
+    from openpyxl.chart import LineChart, Reference
+    first, last, _L = _table(ws, PERF, _records(rep.performance_table(perf)), filters=False)
+    top = max(last, first) + 3
+    _write(ws, top - 1, 1, f"Every month, all brokers · benchmark: {perf.benchmark[1]} ({perf.benchmark[0]})"
+           + (f", prices {perf.benchmark_source}" if perf.benchmark_source else ""), BOLD)
+    sf, sl, _ = _table(ws, PERF_SERIES, _records(rep.performance_series(perf)), top=top, freeze=False, filters=False)
+    if sl >= sf:
+        chart = LineChart()
+        chart.title = "Value, money in and the benchmark"
+        chart.height, chart.width = 9, 22
+        chart.y_axis.title = "€"
+        chart.y_axis.numFmt = "#,##0"
+        data = Reference(ws, min_col=2, max_col=4, min_row=top, max_row=sl)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(Reference(ws, min_col=1, min_row=sf, max_row=sl))
+        ws.add_chart(chart, f"F{top}")
+    r = sl + 2
+    for n in perf.notes:
+        _write(ws, r, 1, n, NOTE)
+        r += 1
 
 
 REYNDERS_NOTES = [
@@ -710,7 +747,7 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 
 # ---------------------------------------------------------------- workbook
-def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None) -> Workbook:
+def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None, perf=None) -> Workbook:
     from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
     plan = harvest if harvest is not None else plan_harvest(rep)
@@ -732,6 +769,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     if not tax.empty:
         tax = tax.sort_values(["status", "taxable_gain_eur"], ascending=[False, False])
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
+    _performance_sheet(sheets["Performance"], rep, perf if perf is not None else rep.performance())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
@@ -754,10 +792,10 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
 
 
 def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None,
-            switch=None):
+            switch=None, perf=None):
     """Write the workbook to `target` and return its path, or return the bytes when no target is given.
     `switch`: (sources, cases, plans, horizon) from the switch planner; default: distributing ETFs into world ETFs."""
-    wb = build_workbook(rep, simulation, harvest, switch)
+    wb = build_workbook(rep, simulation, harvest, switch, perf)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)
