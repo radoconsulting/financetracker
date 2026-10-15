@@ -118,6 +118,34 @@ with st.sidebar:
                 p.unlink()
                 st.rerun()
 
+    st.subheader("Sync")
+    secrets = load_secrets()
+    have_lynx = bool(secrets["MEERWAARDE_IBKR_TOKEN"] and secrets["MEERWAARDE_IBKR_QUERY"])
+    have_bv = bool(secrets["MEERWAARDE_BITVAVO_KEY"] and secrets["MEERWAARDE_BITVAVO_SECRET"])
+    st.caption(("✅" if have_lynx else "➖") + " LYNX (Flex)  ·  " + ("✅" if have_bv else "➖") + " Bitvavo (API)",
+               help="Credentials come from environment variables or the file in MEERWAARDE_SECRETS (outside the data "
+                    "folder): MEERWAARDE_IBKR_TOKEN, MEERWAARDE_IBKR_QUERY, MEERWAARDE_BITVAVO_KEY, "
+                    "MEERWAARDE_BITVAVO_SECRET. They are never stored by the app.")
+    if st.button("Sync now", width="stretch", disabled=not (have_lynx or have_bv)):
+        with st.spinner("Downloading from the brokers…"):
+            bv_pdf = [t for _, r in parsed if r.broker == "Bitvavo" for t in r.transactions]
+            st.session_state.sync_results = run_sync(DATA, lynx=have_lynx, bitvavo=have_bv, secrets=secrets,
+                                                     pdf_rows=bv_pdf or None)
+        st.rerun()
+    for res in st.session_state.get("sync_results", []):
+        (st.success if res.ok else st.error)(f"{res.source}: {res.message}")
+        rec = res.details.get("reconcile")
+        if rec:
+            st.caption(f"Checked against your PDF: {rec['matched']} of {rec['api']} rows have the same id; quantity "
+                       f"equal {rec['qty_ok']}, amount equal {rec['total_ok']} of {rec['with_total']}; time offset "
+                       f"{', '.join(f'{h:g} h' for h in rec['hour_offsets']) or '—'}; fee in the amount sent: "
+                       f"{rec['buy_fee_rule'] or '—'}.")
+    stored = SyncStore(DATA)
+    if stored.flex_dir.exists() or stored.bitvavo_file.exists():
+        n_flex = len(list(stored.flex_dir.glob("*.xml"))) if stored.flex_dir.exists() else 0
+        st.caption(f"Stored: {n_flex} LYNX download(s), {len(stored.bitvavo_items())} Bitvavo items. Rows your uploaded "
+                   "exports already cover are not counted twice.")
+
     st.subheader("Settings")
     fetch = st.toggle("Look up prices online", value=os.environ.get("MEERWAARDE_OFFLINE") != "1", help="Bitvavo for crypto, justETF for ETFs, Yahoo Finance for shares, ECB for exchange rates.")
     own_wallet = st.toggle("Crypto withdrawals go to my own wallet", value=True, help="Transfers to a hardware wallet such as a Ledger are not sales; the coins keep their purchase price.")
@@ -218,7 +246,7 @@ def manual_editor(book: ManualBook, key: str):
 manual = ManualBook.load(MANUAL_JSON)
 
 # ---------------------------------------------------------------- empty state
-if not parsed and not manual.positions:
+if not parsed and not manual.positions and not SyncStore(DATA).load().transactions:
     st.header("Add your exports to start")
     st.markdown(
         """
