@@ -21,7 +21,7 @@ Examples (October 2026): IWDA, SPYY, IMIE, SWRD, CSPX: 0.12%. VWCE and VGLA: 1.3
 Source: https://curvo.eu/article/tob, https://curvo.eu/article/best-world-etf-belgium
 
 **Correction from real data (DEGIRO account statement, 12-10-2026):** a purchase of iShares MSCI ACWI
-(IE00B6R52259, ISAC/SSAC) was charged **1.32%** on a real sale. So ISAC counts as Belgian-registered
+(IE00B6R52259, ISAC/SSAC) was charged **1.32%**. So ISAC counts as Belgian-registered
 accumulating at DEGIRO; the 0.12% listed earlier for it was wrong. Check a fund's actual rate before a switch.
 Same data: VWCE (IE00BK5BQT80) was charged 0.12% on purchases until 2024 and **1.32%** on a 2026 sale: rates change when a fund (or a sibling share class) gets registered in Belgium.
 
