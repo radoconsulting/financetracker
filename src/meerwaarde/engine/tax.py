@@ -9,6 +9,7 @@ Rules applied:
   are not part of the calculation.
 - Financial instruments, insurance contracts, crypto-assets, currency and investment gold form one regime:
   losses offset gains within the same year. Losses do not carry over.
+- Bond funds: the part of the gain taxed as Reynders income (engine/reynders.py) is taken out of the 10% gain.
 """
 from __future__ import annotations
 
@@ -45,6 +46,8 @@ class TaxLine:
     acquisition: float
     taxable_gain: float
     missing: str = ""           # what is missing to compute this line
+    reynders_base: float = 0.0  # interest part taxed at 30% (Reynders tax, bond funds); already out of taxable_gain
+    reynders_method: str = ""
 
     @property
     def key(self):
@@ -68,9 +71,10 @@ def unit_acquisition(lot, sale_price: float, ref_price: float | None, sale_date:
     return 0.0 if rules.zero_cost_when_unknown else None
 
 
-def gain_for(lots, qty: float, sale_price: float, ref_price, sale_date: date, rules: TaxRules):
-    """Taxable gain when selling `qty` units (first in, first out) at sale_price. Returns (gain, acquisition, missing)."""
-    left, acq, missing = qty, 0.0, False
+def gain_for(lots, qty: float, sale_price: float, ref_price, sale_date: date, rules: TaxRules, deduct=None):
+    """Taxable gain when selling `qty` units (first in, first out) at sale_price. Returns (gain, acquisition, missing).
+    `deduct(lot, unit_gain)`: per-unit amount taken out of the gain (the Reynders part of a bond fund)."""
+    left, acq, missing, out = qty, 0.0, False, 0.0
     for lot in lots:
         if left <= 1e-12:
             break
@@ -81,17 +85,21 @@ def gain_for(lots, qty: float, sale_price: float, ref_price, sale_date: date, ru
             missing = True
             u = 0.0
         acq += t * u
+        if deduct:
+            out += t * deduct(lot, sale_price - u)
     sold = qty - max(left, 0.0)
-    return sold * sale_price - acq, acq, missing
+    return sold * sale_price - acq - out, acq, missing
 
 
 def max_without_tax(lots, sale_price: float, ref_price, sale_date: date, rules: TaxRules, room: float,
-                    step: float = 1.0) -> float:
+                    step: float = 1.0, deduct=None) -> float:
     """Largest quantity (first in, first out) whose taxable gain stays at or below `room`."""
     q0 = g0 = best = 0.0
     for lot in lots:
         u = unit_acquisition(lot, sale_price, ref_price, sale_date, rules)
         slope = sale_price - (u or 0.0)
+        if deduct:
+            slope -= deduct(lot, slope)
         q1, g1 = q0 + lot.qty, g0 + slope * lot.qty
         if slope <= 0:
             if g1 <= room + 1e-9:
@@ -103,11 +111,24 @@ def max_without_tax(lots, sale_price: float, ref_price, sale_date: date, rules: 
 
 
 class TaxCalculator:
-    def __init__(self, portfolio, pricebook, rules: TaxRules | None = None, today: date | None = None):
+    def __init__(self, portfolio, pricebook, rules: TaxRules | None = None, today: date | None = None, reynders=None):
+        from .reynders import Reynders
         self.portfolio = portfolio
         self.prices = pricebook
         self.rules = rules or TaxRules()
         self.today = today or pricebook.today
+        self.reynders = reynders or Reynders(eur_per=pricebook.eur_per)
+
+    def deduct_for(self, asset: str, sale_price: float, sale_date: date):
+        """Per-lot deduction for gain_for / max_without_tax, or None when the asset isn't subject to Reynders tax."""
+        if not self.reynders.applies(asset):
+            return None
+        return lambda lot, unit_gain: self.reynders.cgt_deduction(asset, lot, sale_price, sale_date, unit_gain)
+
+    def _with_reynders(self, line: TaxLine, lots, sale_date: date) -> TaxLine:
+        if line.price is not None and self.reynders.applies(line.asset):
+            line.reynders_base, line.reynders_method = self.reynders.for_sale(line.asset, lots, line.qty, line.price, sale_date)
+        return line
 
     # ---------- sales already made in the tax year ----------
     def sold_lines(self, year: int | None = None) -> list[TaxLine]:
@@ -131,9 +152,11 @@ class TaxCalculator:
             pre = [l for l in row.lots if l.date.date() <= r.reference_date]
             proxy = hmap.get((row.broker, row.asset)) or _Proxy(row)
             ref = self.prices.reference(proxy).value if pre and self.prices.reference(proxy) else None
-            gain, acq, missing = gain_for(row.lots, row.qty, sale_price, ref, row.date.date(), r)
-            out.append(TaxLine(row.broker, row.asset, row.name, lt, "Sold", row.date.date(), row.qty, sale_price, ref,
-                               _avg_original(pre), gross, acq, gain, "31-12-2025 price" if missing else ""))
+            gain, acq, missing = gain_for(row.lots, row.qty, sale_price, ref, row.date.date(), r,
+                                          self.deduct_for(row.asset, sale_price, row.date.date()))
+            out.append(self._with_reynders(TaxLine(row.broker, row.asset, row.name, lt, "Sold", row.date.date(), row.qty,
+                                                   sale_price, ref, _avg_original(pre), gross, acq, gain,
+                                                   "31-12-2025 price" if missing else ""), row.lots, row.date.date()))
         return out
 
     # ---------- open positions ----------
@@ -155,9 +178,10 @@ class TaxCalculator:
                 out.append(TaxLine(h.broker, h.asset, h.name, law_type(h.asset_class), "Open", None, qty, None, ref,
                                    _avg_original(pre), 0.0, 0.0, 0.0, "current price"))
                 continue
-            gain, acq, missing = gain_for(h.lots, qty, p_now, ref, self.today, r)
-            out.append(TaxLine(h.broker, h.asset, h.name, law_type(h.asset_class), "Open", None, qty, p_now, ref,
-                               _avg_original(pre), qty * p_now, acq, gain, "31-12-2025 price" if missing else ""))
+            gain, acq, missing = gain_for(h.lots, qty, p_now, ref, self.today, r, self.deduct_for(h.asset, p_now, self.today))
+            out.append(self._with_reynders(TaxLine(h.broker, h.asset, h.name, law_type(h.asset_class), "Open", None, qty,
+                                                   p_now, ref, _avg_original(pre), qty * p_now, acq, gain,
+                                                   "31-12-2025 price" if missing else ""), h.lots, self.today))
         return out
 
     def room_for(self, key, sold: list[TaxLine], simulated: list[TaxLine], exemption: float | None = None) -> float:
@@ -172,7 +196,8 @@ class TaxCalculator:
         pre = [l for l in holding.lots if l.date.date() <= self.rules.reference_date]
         refp = self.prices.reference(holding) if pre else None
         step = 1e-8 if holding.asset_class == "Crypto" else (0.01 if holding.asset_class == "Cash/FX" else 1.0)
-        return max_without_tax(holding.lots, pr, refp.value if refp else None, self.today, self.rules, room, step)
+        return max_without_tax(holding.lots, pr, refp.value if refp else None, self.today, self.rules, room, step,
+                               self.deduct_for(holding.asset, pr, self.today))
 
     @staticmethod
     def summarize(lines: list[TaxLine], rules: TaxRules, extra: dict | None = None) -> dict:

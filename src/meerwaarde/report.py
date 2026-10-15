@@ -9,6 +9,7 @@ import pandas as pd
 from .engine.household import ExemptionYear, exemption_schedule, summarize_people
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
+from .engine.reynders import Reynders, ReyndersBook, ReyndersRules
 from .engine.tax import TaxCalculator, TaxRules
 from .manual import ManualBook
 from .models import BUY, LAW_TYPES, SELL, law_type
@@ -29,8 +30,10 @@ RULES_TEXT = [
     "tax are left out.",
     "Financial instruments, insurance contracts, crypto-assets, currency and investment gold form one regime. Losses "
     "offset gains within the year and don't carry over.",
-    "Not included: the 33% regime for internal capital gains, holdings of 20% or more in a company, Reynders tax on "
-    "bond funds, and income tax on staking rewards. Units received in the tax year without a purchase price count at "
+    "Bond funds and bond ETFs you mark as subject to the Reynders tax: 30% on the interest part of the gain (TIS, or "
+    "the bond share of the gain), no exemption; that part is taken out of the gain for the 10%.",
+    "Not included: the 33% regime for internal capital gains, holdings of 20% or more in a company, and income tax on "
+    "staking rewards. Units received in the tax year without a purchase price count at "
     "zero cost.",
     "This is a calculation from your exports, not tax advice.",
 ]
@@ -60,6 +63,7 @@ class Simulation:
     lines: list                # TaxLine per simulated sale (qty > 0)
     summary: dict              # summarize_people() of real + simulated + extra sales
     positions: pd.DataFrame    # per position: what is sold and the largest quantity that stays tax-free
+    reynders: dict = field(default_factory=dict)   # reynders_summary() of the simulated sales
 
 
 @dataclass
@@ -155,7 +159,8 @@ class Report:
         rows = [dict(broker=l.broker, asset=l.asset, name=l.name, type=LAW_TYPES[l.law_type][0], law_type=l.law_type, status=l.status,
                      date=l.date, qty=l.qty, price_eur=l.price, price_31dec_eur=l.reference_price,
                      avg_purchase_eur=l.purchase_price, proceeds_eur=round(l.proceeds, 2), acquisition_eur=round(l.acquisition, 2),
-                     taxable_gain_eur=round(l.taxable_gain, 2), missing=l.missing) for l in lines]
+                     taxable_gain_eur=round(l.taxable_gain, 2), reynders_base_eur=round(l.reynders_base, 2),
+                     missing=l.missing) for l in lines]
         return pd.DataFrame(rows)
 
     def exemption_rules(self):
@@ -239,7 +244,37 @@ class Report:
                              max_qty=m, max_value=m * price if price else None))
         cols = ["key", "broker", "asset", "name", "type", "held", "price", "sell", "gain", "proceeds", "max_qty", "max_value"]
         positions = pd.DataFrame(rows, columns=cols).sort_values("max_value", ascending=False, na_position="last")
-        return Simulation(sell, price_override, extra, lines, summary, positions.reset_index(drop=True))
+        return Simulation(sell, price_override, extra, lines, summary, positions.reset_index(drop=True),
+                          self.reynders_summary(lines))
+
+    # ---------- Reynders tax ----------
+    def reynders_summary(self, lines: list) -> dict:
+        """Reynders tax per person for these lines: base (their share) and 30% of it; no exemption."""
+        rate = self.tax.reynders.rules.rate
+        people = {pid: {"base": 0.0, "tax": 0.0} for pid in self.household.ids}
+        for l in lines:
+            if not l.reynders_base:
+                continue
+            for pid, s in self.household.share(l.broker, l.asset).items():
+                people[pid]["base"] += l.reynders_base * s
+        for v in people.values():
+            v["tax"] = rate * v["base"]
+        return {"people": people, "base": sum(v["base"] for v in people.values()),
+                "tax": sum(v["tax"] for v in people.values()), "rate": rate}
+
+    def reynders_flags(self) -> list[str]:
+        """Bond ETFs without a Reynders entry (shown apart from the data notes)."""
+        return self.tax.reynders.flagged(self.portfolio.holdings())
+
+    def reynders_table(self, lines: list | None = None) -> pd.DataFrame:
+        """Per line subject to the Reynders tax (default: this year's sales and selling everything today)."""
+        lines = self.sold_lines() + self.tax.open_lines() if lines is None else lines
+        rate = self.tax.reynders.rules.rate
+        rows = [dict(broker=l.broker, asset=l.asset, name=l.name, status=l.status, date=l.date, qty=l.qty, price_eur=l.price,
+                     base_eur=round(l.reynders_base, 2), tax_eur=round(rate * l.reynders_base, 2), method=l.reynders_method)
+                for l in lines if self.tax.reynders.applies(l.asset)]
+        return pd.DataFrame(rows, columns=["broker", "asset", "name", "status", "date", "qty", "price_eur", "base_eur",
+                                           "tax_eur", "method"])
 
     def exemption_table(self, until: int | None = None) -> pd.DataFrame:
         rows = []
@@ -316,7 +351,8 @@ class Report:
 def build_report(files, fetch_prices: bool = True, cache_dir=None, options: PortfolioOptions | None = None,
                  rules: TaxRules | None = None, overrides_csv: str | None = None, today: date | None = None,
                  parsed: list | None = None, profile: TaxProfile | None = None,
-                 manual: ManualBook | None = None) -> Report:
+                 manual: ManualBook | None = None, reynders: ReyndersBook | None = None,
+                 reynders_rules: ReyndersRules | None = None) -> Report:
     """`rules.exemption` is the base exemption of `rules.year`; pass rules=None to take it from the profile.
     `manual`: positions no export covers; they are added after the exports are combined (never deduplicated)."""
     results = parsed if parsed is not None else [parse_file(f) for f in files]
@@ -332,5 +368,5 @@ def build_report(files, fetch_prices: bool = True, cache_dir=None, options: Port
     manual.apply_prices(pb)
     if overrides_csv:
         pb.load_overrides_csv(overrides_csv)
-    calc = TaxCalculator(pf, pb, rules, today=today)
+    calc = TaxCalculator(pf, pb, rules, today=today, reynders=Reynders(reynders, reynders_rules, pb.eur_per))
     return Report(pf, pb, calc, warnings + pf.warnings, profile, manual)
