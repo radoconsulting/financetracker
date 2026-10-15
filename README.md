@@ -53,6 +53,9 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   period they cover; the sync adds what is newer. Credentials only from environment variables or a secrets file:
   `MEERWAARDE_IBKR_TOKEN`, `MEERWAARDE_IBKR_QUERY`, `MEERWAARDE_BITVAVO_KEY`, `MEERWAARDE_BITVAVO_SECRET`
   (`MEERWAARDE_SECRETS=path\to\secrets.env`). How to get them: docs/brokers/lynx.md and docs/brokers/bitvavo.md.
+- **Multi-year tax plan to 2030**: what to sell and buy back each year so every year's exemption is used before the
+  original-price window closes, with the tax saved against selling everything in 2031 (Year-end tab, `meerwaarde plan`,
+  Excel sheet *Tax plan*).
 - **Calendar**: expected dividends for the next 12 months with the foreign and Belgian tax on them, and when the
   year's taxes come due (**Calendar** tab, Excel sheet).
 - **Fund red flags**: distributing funds, 1.32% stock exchange tax, high running costs and bond funds (Reynders), each

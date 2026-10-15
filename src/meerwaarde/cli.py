@@ -299,6 +299,22 @@ def cmd_sync(a):
         sys.exit(1)
 
 
+def cmd_plan(a):
+    rep = _build(a)
+    tp = rep.tax_plan(growth=a.growth / 100, keep_carry=not a.use_all)
+    print(f"\nTax plan {tp.years[0].year if tp.years else ''}–2030 (prices +{tp.growth:.0%} a year)")
+    for y in tp.years:
+        print(f"  {y.year}: room {', '.join(f'{rep.household.name(p)} {_eur(v)}' for p, v in y.room.items())}, "
+              f"gain {_eur(y.gain)}, costs {_eur(y.costs)}")
+        for l in y.lines:
+            print(f"      sell and buy back {l.qty:,.8g} {l.name[:40]} ({l.broker}) at ~{l.price:,.2f}: gain {_eur(l.gain)}"
+                  + (f", of which original price kept {_eur(l.window)}" if l.window else ""))
+    print(f"\n  If everything were sold in {tp.final_year}: without the plan {_eur(tp.tax_without)}, with it "
+          f"{_eur(tp.tax_with)}; costs {_eur(tp.costs)}; net saving {_eur(tp.saving)}")
+    for n in tp.notes:
+        print(f"  Note: {n}")
+
+
 def cmd_allocation(a):
     from .engine.allocation import load_overrides
     rep = _build(a)
@@ -438,6 +454,12 @@ def main(argv=None):
     pe.add_argument("--benchmark", metavar="ISIN", help="benchmark fund (default iShares MSCI ACWI, IE00B6R52259)")
     pe.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="also write the Excel workbook (default performance.xlsx)")
     pe.set_defaults(func=cmd_performance)
+
+    pl = sub.add_parser("plan", help="Multi-year tax plan to 2030: what to sell and buy back each year within the exemption")
+    common(pl)
+    pl.add_argument("--growth", type=float, default=5.0, help="expected yearly price growth in %% (default 5)")
+    pl.add_argument("--use-all", action="store_true", help="also use the €1,000 that would otherwise carry forward")
+    pl.set_defaults(func=cmd_plan)
 
     al = sub.add_parser("allocation", help="Exposure by asset class, region, currency and sector, looking through funds")
     common(al)

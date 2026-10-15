@@ -257,3 +257,14 @@ share dividend exemption is applied only in the yearly figures (income tax engin
 the year's dividend/interest tax and meerwaardebelasting so far, declared in the next year's return and paid within
 two months of the assessment (by 30 June two years later at the latest). Regression unchanged.
 
+### D37 · Multi-year tax plan: greedy per year within the exemption, priced with one growth rate (2026-10-15)
+`engine/taxplan.py`. For each year from now to 2030, per person, the room is the year's available exemption (incl.
+carry-forward, via `exemption_schedule` on the planned gains) minus what's used, keeping €1,000 for the carry-forward
+by default (as D21). Positions are picked cheapest cost per euro of benefit, where benefit = 10% × (gain harvested +
+the original purchase price kept above the 31-12-2025 value, which is lost after 2030). Quantities come from
+`max_without_tax`, trimmed to the last FIFO unit that still has a gain (selling units bought back earlier only costs
+stock exchange tax). Sold units come back as a new lot at that year's price. Prices: today's × (1+g)^years, cash and
+bonds flat; Reynders funds and insurance left out. Compared with selling everything in 2031 without the plan; the
+saving is that difference minus the plan's costs. A plan, not advice: real prices on the trade day decide.
+Regression unchanged.
+

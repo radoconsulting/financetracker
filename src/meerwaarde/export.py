@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Red flags", "Calendar", "Manual positions", "Prices",
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Red flags", "Calendar", "Tax plan", "Manual positions", "Prices",
           "How calculated")
 
 
@@ -288,6 +288,27 @@ CAL = [Col("date", "Expected on", DATE, 12), Col("broker", "Broker", width=10), 
        Col("gross_eur", "Gross (€)", EUR, 13), Col("foreign_tax_eur", "Foreign tax (€)", EUR, 13),
        Col("net_eur", "Net (€)", EUR, 13, "={gross_eur}{r}+{foreign_tax_eur}{r}"),
        Col("be_tax_eur", "Belgian tax (€)", EUR, 13), Col("based_on", "Based on the payment of", DATE, 14)]
+
+PLAN = [Col("year", "Year", "0", 7), Col("broker", "Broker", width=10), Col("name", "Sell and buy back", width=36),
+        Col("qty", "Quantity", QTY, 12), Col("price_eur", "Price assumed (€)", PRICE, 13),
+        Col("value_eur", "Value (€)", EUR, 14, "={qty}{r}*{price_eur}{r}"), Col("gain_eur", "Gain in the exemption (€)", EUR, 15),
+        Col("window_eur", "Of which: original price kept (€)", EUR, 15), Col("costs_eur", "Costs (€)", EUR, 12)]
+
+
+def _plan_sheet(ws, rep: Report, tp) -> None:
+    first, last, L = _table(ws, PLAN, _records(rep.tax_plan_table(tp)))
+    r = max(last, first) + 2
+    _write(ws, r, 1, f"If everything were sold in {tp.final_year} (prices +{tp.growth:.0%} a year)", BOLD)
+    _write(ws, r + 1, 1, "Meerwaardebelasting without the plan")
+    _write(ws, r + 1, 4, tp.tax_without, fmt=EUR)
+    _write(ws, r + 2, 1, "Meerwaardebelasting with the plan")
+    _write(ws, r + 2, 4, tp.tax_with, fmt=EUR)
+    _write(ws, r + 3, 1, "Costs of the plan")
+    _write(ws, r + 3, 4, f"=SUM({L['costs_eur']}{first}:{L['costs_eur']}{max(first, last)})" if last >= first else 0, fmt=EUR)
+    _write(ws, r + 4, 1, "Net saving", BOLD, border=TOTAL_BORDER)
+    _write(ws, r + 4, 4, f"=D{r + 1}-D{r + 2}-D{r + 3}", BOLD, EUR, border=TOTAL_BORDER)
+    for j, n in enumerate(tp.notes):
+        _write(ws, r + 6 + j, 1, n, NOTE)
 
 
 def _calendar_sheet(ws, rep: Report, cal) -> None:
@@ -876,6 +897,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     _costs_sheet(sheets["Costs"], rep, cost if cost is not None else rep.costs())
     _table(sheets["Red flags"], FLAGS, _records(rep.red_flags_table(rep.red_flags())))
     _calendar_sheet(sheets["Calendar"], rep, rep.calendar())
+    _plan_sheet(sheets["Tax plan"], rep, rep.tax_plan())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))

@@ -276,6 +276,23 @@ class Report:
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
 
+    # ---------- multi-year tax plan ----------
+    def tax_plan(self, growth: float = 0.05, keep_carry: bool = True):
+        from .engine.taxplan import plan
+        cache = self.__dict__.setdefault("_plan", {})
+        key = (round(growth, 4), keep_carry)
+        if key not in cache:
+            cache[key] = plan(self, growth=growth, keep_carry=keep_carry)
+        return cache[key]
+
+    @staticmethod
+    def tax_plan_table(tp) -> pd.DataFrame:
+        rows = [dict(year=l.year, broker=l.broker, asset=l.asset, name=l.name, qty=l.qty, price_eur=l.price,
+                     value_eur=round(l.qty * l.price, 2), gain_eur=l.gain, window_eur=l.window, costs_eur=l.costs)
+                for y in tp.years for l in y.lines]
+        return pd.DataFrame(rows, columns=["year", "broker", "asset", "name", "qty", "price_eur", "value_eur", "gain_eur",
+                                           "window_eur", "costs_eur"])
+
     # ---------- dividend and cash-flow calendar ----------
     def calendar(self):
         from .engine.calendar import calendar

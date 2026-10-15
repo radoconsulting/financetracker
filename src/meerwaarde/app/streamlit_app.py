@@ -661,6 +661,37 @@ with tabs[4]:
     for n in plan.notes:
         st.info(n)
 
+with tabs[4]:
+    st.divider()
+    st.subheader("Multi-year plan to 2030")
+    st.caption("The same idea over the years: each year, sell and buy back for as much gain as that year's exemption "
+               "allows, until the original-price window closes at the end of 2030. Compared with selling everything in "
+               "2031 without the plan.")
+    p1, p2 = st.columns([2, 1])
+    growth = p1.slider("Expected price growth per year (%)", 0.0, 12.0, 5.0, 0.5, key="plan-growth")
+    keep_p = p2.toggle("Keep €1,000 to carry forward", value=True, key="plan-keep")
+    tp = rep.tax_plan(growth=growth / 100, keep_carry=keep_p)
+    c = st.columns(4)
+    c[0].metric(f"Tax in {tp.final_year} without the plan", money(tp.tax_without))
+    c[1].metric("With the plan", money(tp.tax_with))
+    c[2].metric("Costs of the plan", money(tp.costs))
+    c[3].metric("Net saving", money(tp.saving))
+    pt = rep.tax_plan_table(tp)
+    if pt.empty:
+        st.info("Nothing worth doing with these settings.")
+    else:
+        st.dataframe(pt, hide_index=True, width="stretch", column_config={
+            "asset": None, "year": st.column_config.NumberColumn("Year", format="%d"), "name": "Sell and buy back",
+            "qty": st.column_config.NumberColumn("Quantity", format="%.8g"),
+            "price_eur": st.column_config.NumberColumn("Price assumed", format="%.2f"),
+            "value_eur": st.column_config.NumberColumn("Value", format=EUR),
+            "gain_eur": st.column_config.NumberColumn("Gain in the exemption", format=EUR),
+            "window_eur": st.column_config.NumberColumn("Original price kept", format=EUR,
+                                                         help="Part of the benefit from lots bought above their 31-12-2025 value"),
+            "costs_eur": st.column_config.NumberColumn("Costs", format=EUR)})
+    for n in tp.notes:
+        st.caption(n)
+
 # ---------------------------------------------------------------- switch planner
 with tabs[5]:
     flags = rep.red_flags()

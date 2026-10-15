@@ -91,6 +91,20 @@ def _final_tax(rep, pools, ref, prices_at, final_year: int, net_before: dict[int
     return tax
 
 
+def _with_gain(lots, q: float, price: float, ref, when: date, rules) -> float:
+    """Trim q (first in, first out) to the last unit that carries a gain: selling units bought back earlier at about
+    today's price only costs stock exchange tax."""
+    done, need = 0.0, 0.0
+    for lot in lots:
+        if done >= q - 1e-12:
+            break
+        t = min(lot.qty, q - done)
+        done += t
+        if price - (unit_acquisition(lot, price, ref, when, rules) or 0.0) > 1e-9:
+            need = done
+    return need
+
+
 def plan(rep, growth: float = 0.05, keep_carry: bool = True, costs: CostModel | None = None, final_year: int = 2031,
          last_year: int = LAST_WINDOW_YEAR, min_gain: float = 25.0, exclude=()) -> TaxPlan:
     costs = costs or CostModel()
@@ -144,7 +158,8 @@ def plan(rep, growth: float = 0.05, keep_carry: bool = True, costs: CostModel | 
                     continue
                 price = prices_at(h, when)
                 step = 1e-8 if cls_of[key] == "Crypto" else 1.0
-                q = max_without_tax(lots, price, ref.get(key), when, rules, eff, step)
+                q = _with_gain(lots, max_without_tax(lots, price, ref.get(key), when, rules, eff, step), price,
+                               ref.get(key), when, rules)
                 if q <= 0:
                     continue
                 gain, _acq, missing = gain_for(lots, q, price, ref.get(key), when, rules)

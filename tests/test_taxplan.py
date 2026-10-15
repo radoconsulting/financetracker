@@ -36,8 +36,8 @@ def test_uses_each_years_exemption_and_lowers_the_final_tax():
     assert tp.years[0].room["you"] == pytest.approx(9000.0)          # 10,000 − 1,000 kept for the carry-forward
     assert tp.years[1].room["you"] == pytest.approx(10000.0)         # 10,000 + 1,000 carried − 1,000 kept
     assert sum(y.gain for y in tp.years) == pytest.approx(40000.0, abs=50)
-    assert tp.tax_without == pytest.approx(0.10 * (40000 - 11000))  # 2031: own 10,000 + 1,000 carried
-    assert tp.tax_with < 100 and tp.saving > 2800
+    assert tp.tax_without == pytest.approx(0.10 * (40000 - 15000))  # 2031: 10,000 + 5 years of 1,000 carried
+    assert tp.tax_with < 100 and tp.saving == pytest.approx(tp.tax_without - tp.tax_with - tp.costs) and tp.saving > 2000
 
 
 def test_original_price_above_the_31dec_value_counts_before_2031():
