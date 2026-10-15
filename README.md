@@ -71,6 +71,8 @@ Everything runs on your own machine. Your exports never leave it; only price loo
   message (ntfy push or e-mail) when the tax-free room drops below your threshold, a position moves more than a set
   percentage, or a price can't be found. Settings on the **Alerts** tab; schedule it with cron, the NAS task
   scheduler or `--every 24` in a container.
+- **Tax return helper**: which amount goes in which code of the return per person (1444, 1437, 1075; the
+  meerwaardebelasting once its code is published), on the Tax report tab and in its Excel and PDF.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 

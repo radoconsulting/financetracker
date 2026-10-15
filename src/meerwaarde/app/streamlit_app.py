@@ -870,6 +870,13 @@ with tabs[6]:
                                                               for pid, name in ytr.persons)))
         st.dataframe(ytr.reynders_detail, hide_index=True, width="stretch")
 
+    if not ytr.return_codes.empty:
+        st.markdown("**In the tax return** (Tax-on-web)")
+        st.dataframe(ytr.return_codes, hide_index=True, width="stretch", column_config={
+            "amount_eur": st.column_config.NumberColumn("Amount", format=EUR),
+            "what": st.column_config.TextColumn("What", width="large"), "note": st.column_config.TextColumn("Note", width="large")})
+        st.caption("Codes for the first taxpayer start with 1, for the partner with 2. Check them against the form of the "
+                   "year; the meerwaardebelasting code is published with the 2027 return.")
     if not ytr.checks.empty:
         st.markdown("**Check against the broker's annual overview**")
         st.dataframe(ytr.checks, hide_index=True, width="stretch", column_config={

@@ -268,3 +268,13 @@ bonds flat; Reynders funds and insurance left out. Compared with selling everyth
 saving is that difference minus the plan's costs. A plan, not advice: real prices on the trade day decide.
 Regression unchanged.
 
+### D38 · Tax return helper: 1444 for income without Belgian withholding, 1437 for the refund, no meerwaardebelasting code yet (2026-10-15)
+`taxreport.return_lines`. Codes from Test-Aankoop and investnow.be (consulted 15 October 2026), and the LYNX
+Jaaroverzicht (1444-11): vak VII A 1444/2444 = income without Belgian withholding (fund distributions, interest after
+foreign tax, share dividends above the exemption, the Reynders part of bond funds sold); 1437/2437 = the Belgian
+withholding on share dividends covered by the exemption (refund, at most 30% × €833). The exemption is used first on
+share dividends without withholding (same saving either way, fewer refunds to claim), the rest on Belgian ones
+(their gross estimated as withholding / 30%). Vak XIII A 1075: foreign accounts and countries. The meerwaardebelasting
+code isn't published (expected with the 2027 return): the amount per person is shown with "not published yet". First
+taxpayer 1xxx, partner 2xxx. Tax report tab, its Excel (sheet Tax return), PDF and CLI. Regression unchanged.
+

@@ -170,6 +170,15 @@ def tax_report_pdf(ytr: TaxYearReport, target=None):
         rows.append([r.broker, str(r.trades), eur(r.amount_eur), _p(r.basis)])
     s.append(_table(rows, [30 * mm, 18 * mm, 28 * mm, 104 * mm], right=(1, 2)))
 
+    if ytr.return_codes is not None and not ytr.return_codes.empty:
+        s.append(Paragraph("In the tax return", H2))
+        rows = [["Person", "Vak", "Code", "Amount", "What"]]
+        for r in ytr.return_codes.itertuples():
+            amt = "" if r.amount_eur is None or r.amount_eur != r.amount_eur else eur(r.amount_eur, dash=False)
+            rows.append([_p(r.person), r.vak, _p(r.code), amt, _p(f"{r.what}. {r.note}")])
+        s.append(_table(rows, [24 * mm, 14 * mm, 22 * mm, 22 * mm, 98 * mm], right=(3,)))
+        s.append(Paragraph("Codes for the first taxpayer start with 1, for the partner with 2. Check them against the "
+                           "form of the year: the meerwaardebelasting code is published with the 2027 return.", SMALL))
     if ytr.checks is not None and not ytr.checks.empty:
         s.append(Paragraph("Check against the broker's annual overview", H3))
         rows = [["Broker", "Item", "Broker", "This app", "Difference"]]

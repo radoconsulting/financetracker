@@ -11,10 +11,6 @@ Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in o
 
 Agreed on 15 October 2026 (from the feature review), in this order.
 
-### 21. Tax return helper · S–M
-Per person: which amount goes in which code (1444-11, dividend exemption, foreign accounts, the meerwaardebelasting
-codes once published with the 2027 return), ready to copy into Tax-on-web.
-
 ### 22. Savings and pension savings · M
 Regulated savings accounts (interest exemption) and pension savings (pensioensparen: tax reduction on contributions,
 the advance tax at 60) as positions with their own rules.
@@ -60,3 +56,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 18. Fund red flags · done 2026-10-15 · top of the Switch tab, Excel sheet; distributing, 1.32% stock exchange tax, TER above the alternative, bond funds; like-for-like alternatives only; CSPX added to the catalog as unverified (D35).
 - 19. Dividend and cash-flow calendar · done 2026-10-15 · Calendar tab, Excel sheet; last year's payments per unit for the units held now, foreign and Belgian tax per payment, taxes coming due and when (D36).
 - 20. Multi-year tax plan 2026–2030 · done 2026-10-15 · Year-end tab section, `meerwaarde plan`, Excel sheet; yearly sell-and-buy-back within each person's exemption to 2030, original-price window counted, compared with selling everything in 2031 (D37).
+- 21. Tax return helper · done 2026-10-15 · Tax report tab, its Excel sheet Tax return, PDF and CLI; 1444/2444, 1437/2437, 1075, the meerwaardebelasting per person until its code is published; sources in docs/domain/belgian-taxes.md (D38).

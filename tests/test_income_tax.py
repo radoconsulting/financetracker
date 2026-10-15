@@ -99,3 +99,28 @@ def test_report_workbook_formulas(rep):
     ws = wb["Report"]
     formulas = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
     assert any("$B$4" in f for f in formulas) and any("$B$5" in f for f in formulas)    # rates are input cells
+
+
+def test_return_codes_split_the_exemption_between_1444_and_1437():
+    from meerwaarde.engine.income_tax import IncomeLine, IncomeTax
+    from meerwaarde.taxreport import return_lines
+    import pandas as pd
+
+    def income(foreign_shares):
+        lines = [IncomeLine("you", "A", "shares", foreign_shares, 0.0),
+                 IncomeLine("you", "A", "shares", 100.0, 0.0, be_withheld=-30.0),     # a Belgian company
+                 IncomeLine("you", "A", "funds", 200.0, 0.0), IncomeLine("you", "A", "interest", 10.0, -2.0)]
+        return {"you": IncomeTax("you", 2025, lines, 833.0, 0.30)}
+
+    rows = return_lines(None, 2025, [("you", "You")], income(1000.0), {}, {}, [{"broker": "A", "country": "Ireland"}])
+    by = rows.set_index("code")
+    assert by.loc["1444", "amount_eur"] == pytest.approx(1000 - 833 + 200 + 8)
+    assert "1437" not in by.index                                   # exemption used up on dividends without withholding
+    assert "Ireland" in by.loc["1075", "note"]
+    rows = return_lines(None, 2026, [("you", "You"), ("partner", "Partner")], income(300.0),
+                        {"people": {"you": {"net": 5000.0, "exemption": 10000.0, "tax": 0.0}}},
+                        {"people": {"you": {"base": 50.0}}}, [])
+    by = rows[rows.person == "You"].set_index("code")
+    assert by.loc["1444", "amount_eur"] == pytest.approx(0 + 200 + 8 + 50)        # Reynders part included
+    assert by.loc["1437", "amount_eur"] == pytest.approx(0.30 * 100)              # the rest of the exemption on BE dividends
+    assert by.loc["not published yet", "amount_eur"] == 5000.0

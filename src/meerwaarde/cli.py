@@ -212,6 +212,11 @@ def cmd_tax_report(a):
     print("\nStock exchange tax")
     for r in ytr.tob.itertuples():
         print(f"  {r.broker:<8} {_eur(r.amount_eur):>12}  {r.basis}")
+    if not ytr.return_codes.empty:
+        print("\nIn the tax return")
+        for r in ytr.return_codes.itertuples():
+            amt = "" if r.amount_eur is None or r.amount_eur != r.amount_eur else f"{r.amount_eur:>12,.2f}"
+            print(f"  {r.person[:16]:<16} {r.vak:<6} {r.code:<17} {amt:>12}  {r.what[:70]}")
     if not ytr.checks.empty:
         print("\nCheck against the broker's annual overview")
         for r in ytr.checks.itertuples():

@@ -1114,11 +1114,17 @@ CHECKS = [Col("broker", "Broker", width=10), Col("item", "Item", width=40),
           Col("difference", "Difference (€)", EUR, 14, '=IF({broker_eur}{r}="","",{app_eur}{r}-{broker_eur}{r})')]
 
 
+RETURN = [Col("person", "Person", width=16), Col("vak", "Vak", width=8), Col("code", "Code", width=16),
+          Col("amount_eur", "Amount (€)", EUR, 14), Col("what", "What", width=70), Col("note", "Note", width=60)]
+
+
 def tax_report_workbook(ytr) -> Workbook:
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
     _tr_report_sheet(ws, ytr)
+    if ytr.return_codes is not None and not ytr.return_codes.empty:
+        _table(wb.create_sheet("Tax return"), RETURN, _records(ytr.return_codes))
     if ytr.checks is not None and not ytr.checks.empty:
         _table(wb.create_sheet("Checks"), CHECKS, _records(ytr.checks))
     sales = wb.create_sheet(f"Sales {ytr.year}")

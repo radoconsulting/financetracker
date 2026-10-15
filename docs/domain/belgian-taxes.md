@@ -58,6 +58,18 @@ Same data: VWCE (IE00BK5BQT80) was charged 0.12% on purchases until 2024 and **1
 - Irish-domiciled ETFs lose 15% US withholding inside the fund on US dividends; that applies to both distributing
   and accumulating classes.
 
+## Tax return codes (D38)
+
+| Code (partner) | Vak | What | Source |
+|---|---|---|---|
+| 1444 (2444) | VII A | Income without Belgian withholding: foreign-broker dividends (shares above the exemption, funds), interest, Reynders part | investnow.be, LYNX Jaaroverzicht ("1444-11") |
+| 1437 (2437) | VII A | Belgian withholding on share dividends claimed under the exemption (refund, max 30% × €833) | Test-Aankoop, investnow.be |
+| 1075 | XIII A | Foreign accounts (yes + countries); plus the one-time CAP registration at the National Bank | Test-Aankoop |
+| — | — | Meerwaardebelasting: code expected with the 2027 return (income 2026) | investnow.be |
+
+Sources: https://www.test-aankoop.be/invest/beleggen/fiscaliteit-and-rechten/artikels/2026/05/beleggingen-belastingaangifte-2026,
+https://investnow.be/belastingaangifte-beleggers/, https://www.test-aankoop.be/invest/beleggen/fiscaliteit-and-rechten/artikels/2026/02/buitenlandse-rekening-aangeven-bnb-belastingaangifte
+
 ## Reynders tax (implemented, backlog item 9: `engine/reynders.py`, D25)
 
 Art. 19bis WIB92. Funds (including ETFs) with more than 10% in debt claims (25% for units acquired before

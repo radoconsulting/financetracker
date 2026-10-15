@@ -14,6 +14,53 @@ from .engine.income_tax import IncomeTax
 from .models import LAW_TYPES
 from .report import INCOME_RULES_TEXT, RULES_TEXT, Report
 
+BE_RATE = 0.30
+
+
+def return_lines(rep: Report, year: int, persons: list, income: dict, cgt: dict, reynders: dict, accounts: list) -> pd.DataFrame:
+    """Which amount goes in which code of the tax return (D38). First person: 1xxx codes, partner: 2xxx.
+
+    1444/2444 (vak VII): income without Belgian withholding = share dividends above the exemption + fund distributions
+    + interest (after foreign tax) + the Reynders part of bond funds sold. 1437/2437: the Belgian withholding on share
+    dividends covered by the exemption (refund), when the exemption isn't used up on dividends without withholding.
+    1075 (vak XIII A): foreign accounts and their countries. The meerwaardebelasting has no code yet (2027 return)."""
+    rows = []
+    for n, (pid, name) in enumerate(persons):
+        pre = "1" if n == 0 else "2"
+        it = income.get(pid)
+        if it is not None:
+            be_gross = -sum(l.be_withheld for l in it.lines if l.category == "shares") / BE_RATE
+            shares_no_be = max(0.0, it.total("shares") - be_gross)
+            ex = it.exemption_available
+            ex_foreign = min(ex, shares_no_be)
+            ex_be = min(ex - ex_foreign, max(0.0, be_gross))
+            amount = (shares_no_be - ex_foreign + max(0.0, it.total("funds")) + max(0.0, it.total("interest"))
+                      + max(0.0, it.total("other")) + reynders.get("people", {}).get(pid, {}).get("base", 0.0))
+            rows.append(dict(person=name, vak="VII A", code=f"{pre}444", amount_eur=round(amount, 2),
+                             what="Dividends and interest without Belgian withholding (foreign brokers): fund "
+                                  "distributions, interest, share dividends above the exemption, Reynders part of bond "
+                                  "funds sold",
+                             note=f"share dividends €{shares_no_be:,.2f}, of which €{ex_foreign:,.2f} exempt"))
+            if ex_be > 0.005:
+                rows.append(dict(person=name, vak="VII A", code=f"{pre}437", amount_eur=round(BE_RATE * ex_be, 2),
+                                 what="Belgian withholding on share dividends you claim the exemption for (refund)",
+                                 note=f"on €{ex_be:,.2f} of Belgian dividends; the refund is at most €{BE_RATE * ex:,.2f}"))
+        p = cgt.get("people", {}).get(pid) if cgt else None
+        if p is not None and year >= 2026:
+            rows.append(dict(person=name, vak="(new)", code="not published yet",
+                             amount_eur=round(p["net"], 2),
+                             what="Meerwaardebelasting: net taxable gain of the year (before the exemption)",
+                             note=f"exemption €{p['exemption']:,.2f}, tax €{p['tax']:,.2f}; the code comes with the "
+                                  f"{year + 1} return"))
+    if accounts:
+        countries = sorted({a["country"] for a in accounts if a.get("country") and a["country"] != "?"})
+        rows.append(dict(person="each person with an account", vak="XIII A", code="1075", amount_eur=None,
+                         what="Foreign accounts: answer yes and give the countries", note=", ".join(countries)
+                         + "; also registered once with the National Bank (CAP). Whether a crypto platform account must "
+                           "be reported is not settled."))
+    return pd.DataFrame(rows, columns=["person", "vak", "code", "amount_eur", "what", "note"])
+
+
 # Where each broker's account is held, for the foreign-accounts checklist.
 ACCOUNTS = {
     "DEGIRO": ("flatexDEGIRO Bank AG, Dutch branch", "Netherlands"),
@@ -42,6 +89,7 @@ class TaxYearReport:
     reynders: dict = field(default_factory=dict)           # reynders_summary() of the year's sales
     reynders_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
     checks: pd.DataFrame = field(default_factory=pd.DataFrame)   # the brokers' annual overviews next to the app's figures
+    return_codes: pd.DataFrame = field(default_factory=pd.DataFrame)   # which amount goes in which code (D38)
 
     @property
     def complete(self) -> bool:
@@ -149,4 +197,5 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
 
     return TaxYearReport(year, today, [(p.id, p.name) for p in hh.persons], cgt, exemption, history, sales, inc, detail,
                          rep.tob_summary(year), rep.tob_detail(year), accounts, checklist, notes,
-                         RULES_TEXT + INCOME_RULES_TEXT, reynders, rep.reynders_table(sold), checks)
+                         RULES_TEXT + INCOME_RULES_TEXT, reynders, rep.reynders_table(sold), checks,
+                         return_lines(rep, year, [(p.id, p.name) for p in hh.persons], inc, cgt, reynders, accounts))
