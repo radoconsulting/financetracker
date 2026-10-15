@@ -240,7 +240,7 @@ def test_sync_end_to_end_and_report_uses_the_rows(tmp_path):
     assert [r.ok for r in missing] == [False, False] and "MEERWAARDE_IBKR_TOKEN" in missing[0].message
     rep = build_report([], fetch_prices=False, today=date(2026, 4, 1), parsed=[], synced=SyncStore(tmp_path).load().transactions)
     held = {(h.broker, h.asset): h.qty for h in rep.portfolio.holdings()}
-    assert held[("LYNX", "XX0000000001")] == 10 and held[("Bitvavo", "BTC")] == pytest.approx(0.002 - 0.001 + 0.0004 - 0.00001)
+    assert held[("LYNX", "XX0000000001")] == 10 and held[("Bitvavo", "BTC")] == pytest.approx(0.002 - 0.001 - 0.00001)   # own wallet: still held
 
 
 def test_sync_reports_network_errors_without_raising(tmp_path):
