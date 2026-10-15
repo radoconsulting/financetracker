@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Manual positions", "Prices", "How calculated")
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Manual positions", "Prices", "How calculated")
 
 
 @dataclass
@@ -252,6 +252,32 @@ def _performance_sheet(ws, rep: Report, perf) -> None:
     for n in perf.notes:
         _write(ws, r, 1, n, NOTE)
         r += 1
+
+
+ALLOC = [Col("name", "Name", width=40), Col("value_eur", "Value (€)", EUR, 15), Col("share", "Share", "0.0%", 10)]
+LOOK = [Col("isin", "ISIN", width=15), Col("name", "Holding", width=32), Col("value_eur", "Value (€)", EUR, 15),
+        Col("share", "Share", "0.0%", 10), Col("via", "Through", width=60)]
+OVERLAP = [Col("fund_a", "Fund", width=36), Col("fund_b", "Fund", width=36), Col("overlap", "Overlap (top 10)", "0.0%", 14),
+           Col("shared", "Shared top holdings", "0", 12)]
+ALLOC_TITLES = {"asset_class": "Asset class", "region": "Region", "currency": "Currency (approximate)", "sector": "Sector",
+                "country": "Country"}
+
+
+def _allocation_sheet(ws, rep: Report, al) -> None:
+    row = 1
+    for dim, title in ALLOC_TITLES.items():
+        _write(ws, row, 1, title, BOLD)
+        first, last, _L = _table(ws, ALLOC, _records(rep.allocation_table(al, dim)), top=row + 1, freeze=False, filters=False)
+        row = max(last, first) + 2
+    _write(ws, row, 1, "Largest holdings, looking through the funds (their top 10 only)", BOLD)
+    first, last, _L = _table(ws, LOOK, _records(rep.look_through_table(al)), top=row + 1, freeze=False, filters=False)
+    row = max(last, first) + 2
+    _write(ws, row, 1, "Overlap between funds", BOLD)
+    first, last, _L = _table(ws, OVERLAP, _records(rep.overlap_table(al)), top=row + 1, freeze=False, filters=False)
+    row = max(last, first) + 2
+    for n in al.notes:
+        _write(ws, row, 1, n, NOTE)
+        row += 1
 
 
 REYNDERS_NOTES = [
@@ -747,7 +773,8 @@ def _explain(ws, rep: Report, sim: Simulation):
 
 
 # ---------------------------------------------------------------- workbook
-def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None, perf=None) -> Workbook:
+def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=None, switch=None, perf=None,
+                   alloc=None) -> Workbook:
     from .engine.harvest import plan_harvest
     sim = simulation if simulation is not None else rep.simulate()
     plan = harvest if harvest is not None else plan_harvest(rep)
@@ -770,6 +797,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
         tax = tax.sort_values(["status", "taxable_gain_eur"], ascending=[False, False])
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
     _performance_sheet(sheets["Performance"], rep, perf if perf is not None else rep.performance())
+    _allocation_sheet(sheets["Allocation"], rep, alloc if alloc is not None else rep.allocation())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
@@ -792,10 +820,10 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
 
 
 def to_xlsx(rep: Report, target: str | Path | None = None, simulation: Simulation | None = None, harvest=None,
-            switch=None, perf=None):
+            switch=None, perf=None, alloc=None):
     """Write the workbook to `target` and return its path, or return the bytes when no target is given.
     `switch`: (sources, cases, plans, horizon) from the switch planner; default: distributing ETFs into world ETFs."""
-    wb = build_workbook(rep, simulation, harvest, switch, perf)
+    wb = build_workbook(rep, simulation, harvest, switch, perf, alloc)
     if target is None:
         buf = io.BytesIO()
         wb.save(buf)

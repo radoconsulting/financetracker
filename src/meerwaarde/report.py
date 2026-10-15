@@ -9,6 +9,7 @@ import pandas as pd
 from .engine.household import ExemptionYear, exemption_schedule, summarize_people
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
+from .engine.allocation import Allocation, allocation
 from .engine.performance import DEFAULT_BENCHMARK, Performance, performance
 from .engine.reynders import Reynders, ReyndersBook, ReyndersRules
 from .engine.tax import TaxCalculator, TaxRules
@@ -271,6 +272,31 @@ class Report:
         rows = [dict(date=p.on, value=round(p.value, 2), invested=round(p.invested, 2),
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
+
+    # ---------- allocation look-through ----------
+    def allocation(self, overrides: dict | None = None, fetch: bool | None = None) -> Allocation:
+        key = (id(overrides), fetch)
+        cache = self.__dict__.setdefault("_alloc", {})
+        if key not in cache:
+            cache[key] = allocation(self, overrides, fetch)
+        return cache[key]
+
+    @staticmethod
+    def allocation_table(al: Allocation, dimension: str) -> pd.DataFrame:
+        rows = [dict(name=k, value_eur=round(v, 2), share=v / al.total if al.total else None)
+                for k, v in al.totals.get(dimension, {}).items() if abs(v) > 0.005]
+        return pd.DataFrame(rows, columns=["name", "value_eur", "share"])
+
+    @staticmethod
+    def look_through_table(al: Allocation, n: int = 25) -> pd.DataFrame:
+        rows = [dict(isin=i, name=nm, value_eur=round(v, 2), share=v / al.total if al.total else None, via=", ".join(via))
+                for i, nm, v, via in al.top[:n]]
+        return pd.DataFrame(rows, columns=["isin", "name", "value_eur", "share", "via"])
+
+    @staticmethod
+    def overlap_table(al: Allocation) -> pd.DataFrame:
+        return pd.DataFrame([dict(fund_a=a, fund_b=b, overlap=s, shared=n) for a, b, s, n in al.overlap],
+                            columns=["fund_a", "fund_b", "overlap", "shared"])
 
     # ---------- Reynders tax ----------
     def reynders_summary(self, lines: list) -> dict:

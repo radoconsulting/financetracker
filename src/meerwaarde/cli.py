@@ -293,6 +293,28 @@ def cmd_sync(a):
         sys.exit(1)
 
 
+def cmd_allocation(a):
+    from .engine.allocation import load_overrides
+    rep = _build(a)
+    al = rep.allocation(load_overrides(a.exposure) if a.exposure else None)
+    print(f"\nAllocation of €{al.total:,.0f} (looking through funds)")
+    for dim in ("asset_class", "region", "currency", "sector"):
+        items = [(k, v) for k, v in al.totals[dim].items() if v > 0.005][:8]
+        print(f"  {dim.replace('_', ' ').capitalize():<12} " + " · ".join(f"{k} {v / al.total:.0%}" for k, v in items))
+    print("\n  Largest holdings through everything you own (funds: top 10 only)")
+    for isin, name, v, via in al.top[:10]:
+        print(f"    {name[:34]:<34} €{v:>11,.0f}  {v / al.total:5.1%}  via {len(via)}")
+    if al.overlap:
+        print("\n  Overlap between funds (shared top-10 holdings)")
+        for x, y, share, n in al.overlap[:8]:
+            print(f"    {x[:30]:<30} × {y[:30]:<30} {share:6.1%} ({n} shared)")
+    for n in al.notes:
+        print(f"  Note: {n}")
+    if a.xlsx is not None:
+        from .export import to_xlsx
+        print(f"Excel workbook written to {to_xlsx(rep, _out_path(a.xlsx, a.out, 'allocation.xlsx'), alloc=al)}")
+
+
 def cmd_refresh(a):
     from .alerts import read_log, refresh, run_every, send_test
     from .datadir import default_data_dir
@@ -410,6 +432,12 @@ def main(argv=None):
     pe.add_argument("--benchmark", metavar="ISIN", help="benchmark fund (default iShares MSCI ACWI, IE00B6R52259)")
     pe.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="also write the Excel workbook (default performance.xlsx)")
     pe.set_defaults(func=cmd_performance)
+
+    al = sub.add_parser("allocation", help="Exposure by asset class, region, currency and sector, looking through funds")
+    common(al)
+    al.add_argument("--exposure", help="JSON with your own breakdown per fund (the app keeps it as exposure.json)")
+    al.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="also write the Excel workbook (default allocation.xlsx)")
+    al.set_defaults(func=cmd_allocation)
 
     sy = sub.add_parser("sync", help="Download new LYNX (Flex Web Service) and Bitvavo (API) rows into the data folder")
     sy.add_argument("--data-dir", help="the app's data folder (default ~/.local/share/meerwaarde or MEERWAARDE_DATA)")
