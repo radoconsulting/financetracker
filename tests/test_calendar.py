@@ -36,7 +36,7 @@ def test_projects_last_years_payments_for_the_units_held_now():
             tx(date(2025, 1, 2), BUY, "XX0000000003", qty=5, gross_eur=500, total_eur=-500, asset_class="ETF"),
             tx(date(2025, 12, 5), DIVIDEND, "XX0000000003", amount_eur=4.0, asset_class="ETF"),
             tx(date(2026, 1, 5), SELL, "XX0000000003", qty=-5, gross_eur=520, total_eur=520, asset_class="ETF"),
-            tx(date(2025, 6, 1), DIVIDEND, "US0000000001", amount_eur=99.0, asset_class="Stock")]   # > 12 months before the projection window? no: still in the last year
+            tx(date(2025, 6, 1), DIVIDEND, "US0000000001", amount_eur=99.0, asset_class="Stock")]   # older than 12 months: not projected
     c = calendar(make(txns))
     us = [e for e in c.expected if e.asset == "US0000000001"]
     assert [(e.on, e.gross, e.foreign_tax) for e in us] == [(date(2026, 11, 20), 20.0, -3.0)]   # units doubled since

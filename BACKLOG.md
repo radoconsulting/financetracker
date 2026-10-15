@@ -11,10 +11,6 @@ Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in o
 
 Agreed on 15 October 2026 (from the feature review), in this order.
 
-### 19. Dividend and cash-flow calendar · S
-Expected dividends for the next 12 months from the past payments per unit, and the tax due on them (dividend tax,
-meerwaardebelasting, Reynders) and when.
-
 ### 20. Multi-year tax plan 2026–2030 · M
 Spread the gains you'd realise over the years so each person's exemption plus carry-forward is used every year, until
 the original-price window closes at the end of 2030; combines harvesting and the switch planner.
@@ -66,3 +62,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 16. Net worth over time · done 2026-10-15 · Overview tab chart (by broker or asset class), Excel sheet with a chart; positions from the price series, cash per broker rebuilt from the rows and left out where deposits are missing (D33).
 - 17. Fees and costs dashboard · done 2026-10-15 · Costs tab, Excel sheet; stock exchange tax, commissions and conversion, other fees, network fees and TER drag per year and broker; yearly level today and over 10 years (D34).
 - 18. Fund red flags · done 2026-10-15 · top of the Switch tab, Excel sheet; distributing, 1.32% stock exchange tax, TER above the alternative, bond funds; like-for-like alternatives only; CSPX added to the catalog as unverified (D35).
+- 19. Dividend and cash-flow calendar · done 2026-10-15 · Calendar tab, Excel sheet; last year's payments per unit for the units held now, foreign and Belgian tax per payment, taxes coming due and when (D36).

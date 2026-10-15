@@ -276,6 +276,20 @@ class Report:
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
 
+    # ---------- dividend and cash-flow calendar ----------
+    def calendar(self):
+        from .engine.calendar import calendar
+        if "_cal" not in self.__dict__:
+            self.__dict__["_cal"] = calendar(self)
+        return self.__dict__["_cal"]
+
+    @staticmethod
+    def calendar_table(cal) -> pd.DataFrame:
+        rows = [dict(date=e.on, broker=e.broker, asset=e.asset, name=e.name, gross_eur=e.gross, foreign_tax_eur=e.foreign_tax,
+                     net_eur=round(e.net, 2), be_tax_eur=e.be_tax, based_on=e.based_on) for e in cal.expected]
+        return pd.DataFrame(rows, columns=["date", "broker", "asset", "name", "gross_eur", "foreign_tax_eur", "net_eur",
+                                           "be_tax_eur", "based_on"])
+
     # ---------- fund red flags ----------
     def red_flags(self):
         from .engine.redflags import check_funds

@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Red flags", "Manual positions", "Prices",
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Red flags", "Calendar", "Manual positions", "Prices",
           "How calculated")
 
 
@@ -283,6 +283,29 @@ def _allocation_sheet(ws, rep: Report, al) -> None:
 FLAGS = [Col("isin", "ISIN", width=15), Col("name", "Fund", width=34), Col("value_eur", "Value (€)", EUR, 14),
          Col("flags", "What costs money", width=70), Col("per_year_eur", "Per year (€, estimate)", EUR, 14),
          Col("alternative", "Cheaper alternative", width=40), Col("why", "Why this one", width=34)]
+
+CAL = [Col("date", "Expected on", DATE, 12), Col("broker", "Broker", width=10), Col("name", "Name", width=36),
+       Col("gross_eur", "Gross (€)", EUR, 13), Col("foreign_tax_eur", "Foreign tax (€)", EUR, 13),
+       Col("net_eur", "Net (€)", EUR, 13, "={gross_eur}{r}+{foreign_tax_eur}{r}"),
+       Col("be_tax_eur", "Belgian tax (€)", EUR, 13), Col("based_on", "Based on the payment of", DATE, 14)]
+
+
+def _calendar_sheet(ws, rep: Report, cal) -> None:
+    first, last, L = _table(ws, CAL, _records(rep.calendar_table(cal)))
+    r = max(last, first) + 1
+    if last >= first:
+        _write(ws, r, 1, "Total", BOLD, border=TOTAL_BORDER)
+        for key in ("gross_eur", "foreign_tax_eur", "net_eur", "be_tax_eur"):
+            col = list(L).index(key) + 1
+            _write(ws, r, col, f"=SUM({L[key]}{first}:{L[key]}{last})", BOLD, EUR, border=TOTAL_BORDER)
+    r += 2
+    _write(ws, r, 1, "Taxes coming due", BOLD)
+    for i, (what, when, amount) in enumerate(cal.due):
+        _write(ws, r + 1 + i, 1, what)
+        _write(ws, r + 1 + i, 4, amount, fmt=EUR)
+        _write(ws, r + 1 + i, 5, when, NOTE)
+    for j, n in enumerate(cal.notes):
+        _write(ws, r + 2 + len(cal.due) + j, 1, n, NOTE)
 
 
 def _costs_sheet(ws, rep: Report, c) -> None:
@@ -852,6 +875,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     _networth_sheet(sheets["Net worth"], rep, nw if nw is not None else rep.networth())
     _costs_sheet(sheets["Costs"], rep, cost if cost is not None else rep.costs())
     _table(sheets["Red flags"], FLAGS, _records(rep.red_flags_table(rep.red_flags())))
+    _calendar_sheet(sheets["Calendar"], rep, rep.calendar())
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))

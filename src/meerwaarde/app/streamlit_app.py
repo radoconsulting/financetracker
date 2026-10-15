@@ -378,7 +378,7 @@ def reynders_panel():
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance", "Allocation", "Costs"])
+                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance", "Allocation", "Costs", "Calendar"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -1302,6 +1302,39 @@ with tabs[14]:
         st.dataframe(rep.costs_table(cost, by_broker=True), hide_index=True, width="stretch",
                      column_config={"year": st.column_config.NumberColumn("Year", format="%d")})
     for n in cost.notes:
+        st.caption(n)
+
+# ---------------------------------------------------------------- calendar
+with tabs[15]:
+    st.subheader("Expected dividends and taxes coming due")
+    cal = rep.calendar()
+    ct = rep.calendar_table(cal)
+    if ct.empty:
+        st.info("No dividends in the last 12 months on positions you still hold.")
+    else:
+        c = st.columns(3)
+        c[0].metric("Expected, next 12 months (net)", money(ct.net_eur.sum()))
+        c[1].metric("Belgian tax on it", money(ct.be_tax_eur.sum()), help="30% of the net amount, through the tax return")
+        c[2].metric("Payments", f"{len(ct)}")
+        by_month = ct.assign(month=pd.to_datetime(ct.date).dt.to_period("M").dt.to_timestamp()).groupby(
+            ["month", "broker"], as_index=False).net_eur.sum()
+        st.altair_chart(alt.Chart(by_month).mark_bar().encode(
+            x=alt.X("month:T", title=None, timeUnit="yearmonth"), y=alt.Y("net_eur:Q", title="€ net"),
+            color=alt.Color("broker:N", title=None, legend=alt.Legend(orient="top")),
+            tooltip=[alt.Tooltip("month:T", timeUnit="yearmonth"), "broker:N", alt.Tooltip("net_eur:Q", format=",.2f")]),
+            width="stretch")
+        st.dataframe(ct, hide_index=True, width="stretch", column_config={
+            "asset": None, "date": st.column_config.DateColumn("Expected on"),
+            "gross_eur": st.column_config.NumberColumn("Gross", format=EUR),
+            "foreign_tax_eur": st.column_config.NumberColumn("Foreign tax", format=EUR),
+            "net_eur": st.column_config.NumberColumn("Net", format=EUR),
+            "be_tax_eur": st.column_config.NumberColumn("Belgian tax", format=EUR),
+            "based_on": st.column_config.DateColumn("Based on the payment of")})
+    if cal.due:
+        st.markdown("**Taxes coming due**")
+        for what, when, amount in cal.due:
+            st.markdown(f"- {what}: **{money(amount)}**, {when}")
+    for n in cal.notes:
         st.caption(n)
 
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)

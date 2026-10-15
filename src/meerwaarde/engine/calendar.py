@@ -81,7 +81,8 @@ def calendar(rep, months: int = 12) -> Calendar:
     inc = rep.income_tax(y)
     div_tax = sum(it.to_pay for it in inc.values())
     cgt = rep.tax_summary(rep.sold_lines())["tax"]
-    when = f"with the tax return of {y + 1} (filed mid-{y + 1}, paid after the assessment, usually by mid-{y + 2})"
+    when = (f"declared in the return of {y + 1} (summer {y + 1}); paid within 2 months of the assessment, which comes "
+            f"by 30 June {y + 2} at the latest")
     if div_tax:
         due.append((f"Tax on dividends and interest received in {y} so far", when, round(div_tax, 2)))
     if cgt:

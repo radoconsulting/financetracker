@@ -249,3 +249,11 @@ funds, regional and emerging-market funds get none unless the catalog has the sa
 catalog as unverified (TER from iShares, 0.12% from docs/domain/belgian-taxes.md). Shown at the top of the Switch tab
 and in the Excel sheet *Red flags*. Regression unchanged.
 
+### D36 · Dividend calendar: last year's payments per unit, for the units held now (2026-10-15)
+`engine/calendar.py`. Every dividend of the last 12 months is projected one year later at the same amount per unit
+(units held then → units held now), with the foreign withholding booked within 10 days of it; positions sold since
+drop out. Belgian tax per payment: 30% of the net amount, 0 for ISINs starting with BE (withheld at source). The
+share dividend exemption is applied only in the yearly figures (income tax engine), not per payment. Taxes coming due:
+the year's dividend/interest tax and meerwaardebelasting so far, declared in the next year's return and paid within
+two months of the assessment (by 30 June two years later at the latest). Regression unchanged.
+
