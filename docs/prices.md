@@ -31,6 +31,13 @@ Positions without a series are valued at their last trade price on or before the
 on 15 October 2026: most positions had a series (from all three sources; delisted coins didn't); the first run took about a
 minute, later runs come from the cache.
 
+## Fund composition (allocation, D30)
+
+`Fetcher.justetf_profile(isin)` reads the justETF profile page (`/en/etf-profile.html?isin=…`, HTML) and
+`parse_justetf_profile` takes the top 10 holdings (name, ISIN from the stock-profile link, weight), the 4 largest
+countries and sectors with "Other", the number of holdings and the "As of" date. Cached for 7 days. If justETF changes
+the markup, the parser returns None and the fund counts as "Unknown" with a note.
+
 ## Cache
 
 `<data dir>/cache/now/` (6 h) and `<data dir>/cache/history/` (1 year; the ECB zip is refreshed daily).

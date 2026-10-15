@@ -198,3 +198,14 @@ detection. IBKR's CSV isn't added: the Flex sync (D28) covers it better. Freshne
 file a broker's rows came from (or its newest sync download), not the date of its last transaction, so a quiet month
 doesn't trigger the reminder. Regression unchanged.
 
+### D30 · Allocation: justETF composition, top-10 overlap as a lower bound, currency from countries (2026-10-15)
+`engine/allocation.py`. Fund composition from the justETF profile page (`Fetcher.justetf_profile`, HTML parsed by
+`parse_justetf_profile` on its `data-testid` markup; cached a week): the top 10 holdings with ISINs, the 4 largest
+countries and sectors plus "Other" (the full lists need justETF's session-bound "Show more", not used). Provider
+holdings files (iShares, Vanguard) were rejected: a different URL and format per provider and no ISIN → file mapping.
+Your own breakdown in `exposure.json` wins. Shares count as 100% their company, country from the ISIN prefix (a
+company's listing country, not always its business). Currency is approximated from the countries, which is wrong for
+currency-hedged share classes (noted in the app). Overlap = Σ min(wA, wB) over shared top-10 ISINs, once per fund
+(the same ISIN at two brokers is one fund): a lower bound. Tried live on 15 October 2026: every ETF had data, about
+8 seconds for the first run. Regression unchanged (the workbook's Allocation sheet isn't in the baseline).
+

@@ -5,17 +5,15 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–10 and 12–14 are done (11 skipped for now). To confirm with real files: the first Bitvavo sync, and a DEGIRO and Bitvavo CSV export.
+Nothing open: items 1–10 and 12–15 are done (11 skipped for now). To confirm with real files: the first Bitvavo sync, and a DEGIRO and Bitvavo CSV export.
 
 ## Next
 
-Empty: only 15 is left under Later.
+Empty.
 
 ## Later
 
-### 15. Allocation look-through · M
-Exposure by region, sector, currency and asset class, looking through ETFs to their holdings, plus the overlap
-between ETFs (for example S&P 500 inside MSCI World inside ACWI).
+Empty.
 
 ## Skipped for now
 
@@ -40,3 +38,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 14. Performance against a benchmark · done 2026-10-15 · Performance tab, `meerwaarde performance`, Excel sheet with a chart; XIRR and time-weighted return per broker and in total from trade flows; benchmark (default iShares MSCI ACWI) with the same flows, capped at its value; daily history from Bitvavo, justETF, Yahoo, else the last trade price (D27).
 - 12. Automatic sync · done 2026-10-15 · `meerwaarde sync`, *Sync now* in the app, `refresh --sync`; LYNX via the Flex Web Service (checked against the statement PDF: identical trades, costs, positions), Bitvavo via `/account/history` with a read-only key (fee rule and time zone checked against the PDF on the first live sync); exports win where they cover; secrets only from the environment or a secrets file (D28).
 - 13. CSV imports and more brokers · done 2026-10-15 · DEGIRO Transacties/Rekeningoverzicht and Bitvavo as CSV (through the PDF parsers' row logic), inbox folder, reminder when an export is older than 35 days; other brokers through a column mapping on the Data tab instead of guessed formats; IBKR CSV not needed (Flex). Not yet checked against real CSV exports (D29).
+- 15. Allocation look-through · done 2026-10-15 · Allocation tab, `meerwaarde allocation`, Excel sheet; asset class, region, currency (approximate), sector; look-through top holdings and fund overlap from the top 10 (lower bounds); justETF composition, own breakdown in exposure.json (D30).
