@@ -328,7 +328,7 @@ def reynders_panel():
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data", "Manual positions", "Alerts"])
+                "Tax years", "Prices", "Data", "Manual positions", "Alerts", "Performance"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -1010,11 +1010,72 @@ with tabs[11]:
 - Try it first with `meerwaarde refresh --dry-run`, then `meerwaarde refresh --test`.
 """)
 
+# ---------------------------------------------------------------- performance
+perf = None
+with tabs[12]:
+    st.subheader("Performance against a benchmark")
+    st.caption("Measured on the money you put into positions (purchases in, sales and income out), per broker and in total. "
+               "Money-weighted (XIRR) is your own return including the timing of your purchases; time-weighted shows how "
+               "the investments did regardless of when you added money. The benchmark gets exactly the same money on the "
+               "same days.")
+    options = [lookup(i) for i in WORLD_TARGETS if lookup(i)]
+    labels = {f.isin: f"{f.ticker or f.isin} · {f.name}" for f in options}
+    p1, p2, p3 = st.columns([3, 2, 2])
+    default = "IE00B6R52259" if "IE00B6R52259" in labels else next(iter(labels), None)
+    pick = p1.selectbox("Benchmark", list(labels) + ["other"], index=(list(labels).index(default) if default else 0),
+                        format_func=lambda k: labels.get(k, "Other ISIN…"), key="perf-bench")
+    other = p2.text_input("Other ISIN", key="perf-isin", disabled=pick != "other", placeholder="IE00BK5BQT80")
+    bench_isin = other.strip().upper() if pick == "other" else pick
+    who = p3.selectbox("Show", ["All"] + brokers, key="perf-broker")
+    if pick == "other" and not bench_isin:
+        st.info("Enter the ISIN of the fund to compare with.")
+    else:
+        bench = (bench_isin, labels.get(bench_isin, bench_isin))
+        with st.spinner("Looking up price history (the first time can take a minute)…"):
+            perf = rep.performance(bench)
+        line = perf.line(who)
+        if line is None:
+            st.info("No trades to measure.")
+        else:
+            pct = lambda v: "—" if v is None else f"{v:+.1%}"  # noqa: E731
+            c = st.columns(5)
+            c[0].metric("Gain", money(line.gain), help="Value today + money out − money in")
+            c[1].metric("Money-weighted (XIRR)", pct(line.xirr) + " / yr")
+            c[2].metric("Time-weighted", pct(line.twr_annual) + " / yr" if line.twr_annual is not None else pct(line.twr),
+                        help=f"Total {pct(line.twr)} since {perf.start:%d-%m-%Y}")
+            c[3].metric("Benchmark XIRR", pct(line.benchmark_xirr) + " / yr" if line.benchmark_xirr is not None else "—",
+                        delta=None if line.benchmark_xirr is None or line.xirr is None
+                        else f"{(line.xirr - line.benchmark_xirr) * 100:+.1f} pts you vs benchmark")
+            c[4].metric("Benchmark value today", money(line.benchmark_value))
+            series = rep.performance_series(perf, who)
+            long = series.melt("date", ["value", "invested", "benchmark"], var_name="series", value_name="eur").dropna()
+            long["series"] = long["series"].map({"value": "Your value", "invested": "Net money in",
+                                                 "benchmark": f"Same money in {bench[0]}"})
+            st.altair_chart(alt.Chart(long).mark_line(interpolate="monotone").encode(
+                x=alt.X("date:T", title=None), y=alt.Y("eur:Q", title="€", axis=alt.Axis(format=",.0f")),
+                color=alt.Color("series:N", title=None, legend=alt.Legend(orient="top")),
+                tooltip=[alt.Tooltip("date:T"), "series:N", alt.Tooltip("eur:Q", format=",.0f")]), width="stretch")
+            st.dataframe(rep.performance_table(perf), hide_index=True, width="stretch", column_config={
+                "broker": "Broker", "invested": st.column_config.NumberColumn("Money in", format=EUR),
+                "returned": st.column_config.NumberColumn("Money out", format=EUR),
+                "value": st.column_config.NumberColumn("Value today", format=EUR),
+                "gain": st.column_config.NumberColumn("Gain", format=EUR),
+                "xirr": st.column_config.NumberColumn("XIRR / yr", format="percent"),
+                "twr": st.column_config.NumberColumn("Time-weighted total", format="percent"),
+                "twr_annual": st.column_config.NumberColumn("Time-weighted / yr", format="percent"),
+                "benchmark_value": st.column_config.NumberColumn("Benchmark value", format=EUR),
+                "benchmark_xirr": st.column_config.NumberColumn("Benchmark XIRR / yr", format="percent")})
+            for n in perf.notes:
+                st.caption(n)
+            with st.expander("Price history used per position"):
+                st.dataframe(pd.DataFrame([dict(asset=a, source=v) for a, v in sorted(perf.sources.items())]),
+                             hide_index=True, width="stretch")
+
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
     st.subheader("Export")
     sw_result = (sw_srcs, sw_cases, sw_plans, sw_horizon) if sw_srcs and sw_targets else None
-    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result),
+    st.download_button("Excel workbook", data=lambda: to_xlsx(rep, simulation=sim, harvest=plan, switch=sw_result, perf=perf),
                        file_name=default_name(rep),
                        mime=XLSX_MIME, icon=":material/download:", on_click="ignore", width="stretch",
                        help="Summary, positions, sales, income, meerwaardebelasting, the current simulation, prices "
