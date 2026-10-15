@@ -379,3 +379,29 @@ def test_annual_overview_checks_in_the_report():
     assert checks.loc["Code 1444-11 (dividends + interest)", "difference"] == 0.0
     assert checks.loc["Value of the securities on 31-12-2025", "app_eur"] == 2500.0
     assert rep.overview_checks(2024).empty
+
+
+def test_two_copies_of_one_file_count_once():
+    from meerwaarde.parsers import ParseResult, combine
+    from meerwaarde.models import DIVIDEND, Transaction
+    row = lambda: Transaction("LYNX", datetime(2025, 3, 27), DIVIDEND, "XX0000000001", amount_eur=10.0)  # noqa: E731
+    a = ParseResult("LYNX", [row(), row()], None, [], "same.pdf")       # identical rows inside one file are real
+    b = ParseResult("LYNX", [row(), row()], None, [], "same.pdf")       # an uploaded copy and an inbox copy
+    txns, _s, _w = combine([a, b])
+    assert len(txns) == 2
+
+
+def test_overview_value_check_needs_every_31dec_price():
+    from meerwaarde.engine.portfolio import Portfolio
+    from meerwaarde.engine.tax import TaxCalculator, TaxRules
+    from meerwaarde.models import BUY, Transaction
+    from meerwaarde.parsers.lynx_annual import parse_text
+    from meerwaarde.prices import PriceBook
+    from meerwaarde.report import Report
+    pf = Portfolio([Transaction("LYNX", datetime(2025, 1, 2), BUY, "XX0000000001", name="ACME WORLD ETF", asset_class="ETF",
+                                qty=25, gross_eur=2000, total_eur=-2000)])
+    pb = PriceBook(fetch=False, today=date(2026, 3, 1))
+    rep = Report(pf, pb, TaxCalculator(pf, pb, TaxRules(year=2025), today=date(2026, 3, 1)), [], overviews=[parse_text(ANNUAL_TEXT)])
+    row = rep.overview_checks(2025).iloc[-1]
+    import pandas as pd
+    assert "no 31-12 price for ACME WORLD ETF" in row["item"] and pd.isna(row["app_eur"]) and pd.isna(row["difference"])

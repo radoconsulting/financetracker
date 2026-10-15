@@ -314,8 +314,9 @@ class Report:
             div_tax = sum(i.amount_eur for i in inc if i.kind == "withholding" and i.asset_class != "Cash/FX")
             t = ov.totals
             add = lambda what, theirs, ours: rows.append(dict(broker=b, item=what, broker_eur=theirs,  # noqa: E731
-                                                              app_eur=round(ours, 2) + 0.0,
-                                                              difference=None if theirs is None else round(ours - theirs, 2)))
+                                                              app_eur=None if ours is None else round(ours, 2) + 0.0,
+                                                              difference=None if theirs is None or ours is None
+                                                              else round(ours - theirs, 2)))
             add("Gross dividends", round(t.get("dividends_be", 0) + t.get("dividends_foreign", 0), 2) if t else None, div)
             add("Dividend tax withheld", round(-(t.get("dividend_tax_be", 0) + t.get("dividend_tax_foreign", 0)), 2) + 0.0 if t else None,
                 div_tax)
@@ -323,14 +324,17 @@ class Report:
                 interest + int_tax)
             add("Code 1444-11 (dividends + interest)", ov.code_1444, div + interest + int_tax)
             if "AANDELEN" in ov.values and year == self.tax.rules.reference_date.year:
-                add(f"Value of the securities on 31-12-{year}", ov.values["AANDELEN"][1], self._value_on_reference(b))
+                value, missing = self._value_on_reference(b)
+                add(f"Value of the securities on 31-12-{year}" + (f" (no 31-12 price for {missing})" if missing else ""),
+                    ov.values["AANDELEN"][1], None if missing else value)
         return pd.DataFrame(rows, columns=["broker", "item", "broker_eur", "app_eur", "difference"])
 
-    def _value_on_reference(self, broker: str) -> float:
-        """Units held on the reference date × the 31-12 price, for one broker (cash excluded)."""
+    def _value_on_reference(self, broker: str) -> tuple[float, str]:
+        """Units held on the reference date × the 31-12 price, for one broker (cash excluded), and the positions
+        without a 31-12 price (then the value isn't comparable)."""
         from .engine.performance import _at, units_over_time
         ref = self.tax.rules.reference_date
-        total = 0.0
+        total, missing = 0.0, []
         for (b, asset), steps in units_over_time(self.portfolio).items():
             q = _at(steps, ref)
             if b != broker or q <= 1e-9:
@@ -339,8 +343,11 @@ class Report:
             if h is None:
                 continue
             p = self.prices.reference(h)
-            total += q * (p.value if p else 0.0)
-        return total
+            if p is None:
+                missing.append(h.name or asset)
+            else:
+                total += q * p.value
+        return total, ", ".join(dict.fromkeys(missing))
 
     # ---------- Reynders tax ----------
     def reynders_summary(self, lines: list) -> dict:

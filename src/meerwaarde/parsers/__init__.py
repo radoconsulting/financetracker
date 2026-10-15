@@ -149,12 +149,12 @@ def combine(results: list[ParseResult]):
     """Merge parsed files: drop duplicate rows (overlapping exports) and keep the newest LYNX statement info."""
     results, supplement_notes = _supplements(results)
     seen, txns = {}, []
-    for r in results:
+    for n, r in enumerate(results):          # by position, not name: two copies of a file have the same name
         for t in r.transactions:
             k = _key(t)
-            if k in seen and seen[k] != r.filename:
-                continue      # the same row in an overlapping export
-            seen.setdefault(k, r.filename)
+            if k in seen and seen[k] != n:
+                continue      # the same row in an overlapping export (or a second copy of the same file)
+            seen.setdefault(k, n)
             txns.append(t)
     statements = [r.statement for r in results if r.statement is not None]
     statements.sort(key=lambda s: (s.period_end or s.period_start or 0))

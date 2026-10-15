@@ -125,6 +125,9 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
         off = checks[checks.difference.abs() > 1.0] if checks.difference.notna().any() else checks.iloc[0:0]
         notes.append(("The broker's annual overview matches the app's figures within €1." if off.empty else
                       f"The broker's annual overview differs from the app on: {', '.join(off.item)} (see Checks)."))
+        open_ = checks[checks.app_eur.isna()]
+        if not open_.empty:
+            notes.append(f"Not comparable yet: {', '.join(open_.item)}.")
         code = checks[checks.item.str.startswith("Code 1444")]
         if not code.empty and code.broker_eur.iloc[0] is not None:
             checklist.append(f"{code.broker.iloc[0]} states €{code.broker_eur.iloc[0]:,.2f} for code 1444-11 in its "
