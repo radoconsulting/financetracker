@@ -58,13 +58,13 @@ def test_cash_positions_and_own_wallet_moves_are_not_flows():
 
 def test_one_buy_that_doubles():
     rep = make([tx(date(2025, 1, 1), BUY, "X", 10, -1000, 1000)], now={"X": 200.0},
-               history={"X": {date(2024, 12, 31) + timedelta(days=i): 100 + i * 100 / 366 for i in range(367)}})
+               history={"X": {date(2025, 1, 1) + timedelta(days=i): 100 + i * 100 / 365 for i in range(366)}})
     perf = performance(rep, benchmark=("BENCH", "Bench"))
     all_ = perf.line("All")
     assert all_.value == pytest.approx(2000) and all_.invested == 1000 and all_.gain == pytest.approx(1000)
     assert all_.xirr == pytest.approx(1.0, rel=1e-3)
     assert all_.twr == pytest.approx(1.0, rel=1e-3) and all_.twr_annual == pytest.approx(1.0, rel=1e-2)
-    assert perf.points["All"][-1].on == TODAY and len(perf.points["All"]) == 13
+    assert perf.points["All"][-1].on == TODAY and len(perf.points["All"]) == 14
     assert any("benchmark" in n for n in perf.notes)               # no benchmark history: noted
 
 
@@ -112,3 +112,13 @@ def test_series_parsers():
                                "indicators": {"quote": [{"close": [1.0, None]}]}}]}}
     assert parse_yahoo_series(y) == ({date(2025, 1, 2): 1.0}, "USD")
     assert parse_yahoo_series({}) is None
+
+
+def test_benchmark_never_pays_out_more_than_it_is_worth():
+    hist = {date(2025, 1, 1): 100.0, date(2025, 6, 1): 400.0}
+    bench = {date(2025, 1, 1): 10.0, date(2025, 12, 31): 10.0}
+    txns = [tx(date(2025, 1, 1), BUY, "X", 10, -1000, 1000), tx(date(2025, 6, 1), SELL, "X", -10, 4000, 4000)]
+    perf = performance(make(txns, now={}, history={"X": hist, "B": bench}), benchmark=("B", "Bench"))
+    l = perf.line("All")
+    assert l.benchmark_value == pytest.approx(0.0) and l.benchmark_xirr == pytest.approx(0.0, abs=1e-6)
+    assert any("took out more" in n for n in perf.notes)

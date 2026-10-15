@@ -9,6 +9,7 @@ import pandas as pd
 from .engine.household import ExemptionYear, exemption_schedule, summarize_people
 from .engine.income_tax import CATEGORIES, IncomeTax, IncomeTaxRules, income_tax
 from .engine.portfolio import Portfolio, PortfolioOptions
+from .engine.performance import DEFAULT_BENCHMARK, Performance, performance
 from .engine.reynders import Reynders, ReyndersBook, ReyndersRules
 from .engine.tax import TaxCalculator, TaxRules
 from .manual import ManualBook
@@ -246,6 +247,30 @@ class Report:
         positions = pd.DataFrame(rows, columns=cols).sort_values("max_value", ascending=False, na_position="last")
         return Simulation(sell, price_override, extra, lines, summary, positions.reset_index(drop=True),
                           self.reynders_summary(lines))
+
+    # ---------- performance ----------
+    def performance(self, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool | None = None) -> Performance:
+        """XIRR, time-weighted return and a benchmark (engine/performance.py); online history only when prices are fetched."""
+        key = (benchmark, fetch)
+        cache = self.__dict__.setdefault("_perf", {})
+        if key not in cache:
+            cache[key] = performance(self, benchmark, self.prices.fetcher is not None if fetch is None else fetch)
+        return cache[key]
+
+    @staticmethod
+    def performance_table(perf: Performance) -> pd.DataFrame:
+        rows = [dict(broker=l.broker, invested=round(l.invested, 2), returned=round(l.returned, 2), value=round(l.value, 2),
+                     gain=round(l.gain, 2), xirr=l.xirr, twr=l.twr, twr_annual=l.twr_annual,
+                     benchmark_value=None if l.benchmark_value is None else round(l.benchmark_value, 2),
+                     benchmark_xirr=l.benchmark_xirr) for l in perf.lines]
+        return pd.DataFrame(rows, columns=["broker", "invested", "returned", "value", "gain", "xirr", "twr", "twr_annual",
+                                           "benchmark_value", "benchmark_xirr"])
+
+    @staticmethod
+    def performance_series(perf: Performance, broker: str = "All") -> pd.DataFrame:
+        rows = [dict(date=p.on, value=round(p.value, 2), invested=round(p.invested, 2),
+                     benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
+        return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
 
     # ---------- Reynders tax ----------
     def reynders_summary(self, lines: list) -> dict:

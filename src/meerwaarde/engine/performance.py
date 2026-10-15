@@ -21,6 +21,7 @@ from ..models import (BUY, DEPOSIT, DIVIDEND, FEE, INTEREST, REWARD, SELL, WITHD
 
 DEFAULT_BENCHMARK = ("IE00B6R52259", "iShares MSCI ACWI UCITS ETF (Acc)")
 EXCLUDED = ("Cash/FX",)
+MIN_BASE = 100.0      # € : periods with less invested than this are skipped in the time-weighted return
 
 
 # ---------------------------------------------------------------- XIRR
@@ -106,16 +107,23 @@ def units_over_time(portfolio, excluded=EXCLUDED) -> dict[tuple, list[tuple[date
     """(broker, asset) -> [(date, units held after that day)], changes only."""
     own_wallet = portfolio.options.own_wallet_withdrawals
     held: dict[tuple, float] = defaultdict(float)
+    off: dict[tuple, float] = defaultdict(float)       # in your own wallet: still yours, matched when it comes back
     steps: dict[tuple, list] = defaultdict(list)
     for t in portfolio.transactions:
         cls = portfolio.options.class_overrides.get(t.asset, t.asset_class)
         if cls in excluded:
             continue
         k = (t.broker, t.asset)
-        if t.kind in (BUY, SELL, REWARD, DEPOSIT):
+        if t.kind in (BUY, SELL, REWARD):
             held[k] += t.qty
+        elif t.kind == DEPOSIT:
+            back = min(t.qty, off[k]) if own_wallet else 0.0
+            off[k] -= back
+            held[k] += t.qty - back
         elif t.kind == WITHDRAWAL:
             held[k] -= t.fee_qty if own_wallet else abs(t.qty)
+            if own_wallet:
+                off[k] += abs(t.qty) - t.fee_qty
         else:
             continue
         held[k] = max(0.0, held[k]) if abs(held[k]) < 1e-9 else held[k]
@@ -258,8 +266,8 @@ def _twr(points: list[Point], flows: list[Flow]) -> float | None:
         net_in = -sum(f.amount for f in period)
         weighted = -sum(f.amount * (b.on - f.on).days / days for f in period)
         denom = a.value + weighted
-        if denom <= 1e-6:
-            continue                      # empty portfolio in this period: no return to chain
+        if denom < MIN_BASE:
+            continue                      # (nearly) empty portfolio: a few euros would swing the chained return
         growth *= 1 + (b.value - a.value - net_in) / denom
     return growth - 1
 
@@ -274,9 +282,8 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
     start = flows[0].on
     units = units_over_time(pf, excluded)
     ps = PriceSeries(rep, start, end, fetch)
-    dates = month_ends(start, end)
-    if dates[0] != start:
-        dates = [start - timedelta(days=1)] + dates
+    # the first point is the first trade day itself (value after its purchases), so no period starts empty
+    dates = [start] + [d for d in month_ends(start, end) if d > start]
 
     # benchmark prices
     bseries, bsrc = rep.prices.history(benchmark[0], "ETF", start - timedelta(days=7), end) if fetch else ({}, "")
@@ -287,11 +294,12 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
         return v if v is not None else bseries.first()
 
     brokers = sorted({f.broker for f in flows})
-    lines, points = [], {}
+    lines, points, capped = [], {}, set()
     for b in ["All"] + brokers:
         fl = [f for f in flows if b == "All" or f.broker == b]
         keys = [k for k in units if b == "All" or k[0] == b]
         bunits, invested_cum, pts = 0.0, 0.0, []
+        bflows: list[tuple[date, float]] = []          # what the benchmark investment could really pay out
         fi = 0
         for d in dates:
             while fi < len(fl) and fl[fi].on <= d:
@@ -300,7 +308,11 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
                 if bseries:
                     p = bprice(f.on)
                     if p:
-                        bunits -= f.amount / p
+                        amount = f.amount if f.amount < 0 else min(f.amount, max(0.0, bunits * p))
+                        if amount < f.amount - 0.005:
+                            capped.add(b)
+                        bunits -= amount / p
+                        bflows.append((f.on, amount))
                 fi += 1
             value = 0.0
             for k in keys:
@@ -317,7 +329,7 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
         years = max((end - start).days / 365.0, 1 / 365)
         twr_a = (1 + twr) ** (1 / years) - 1 if twr is not None and years >= 1 and twr > -1 else None
         bval = pts[-1].benchmark
-        bx = xirr([(f.on, f.amount) for f in fl] + [(end, bval)]) if bval is not None else None
+        bx = xirr(bflows + [(end, bval)]) if bval is not None else None
         lines.append(Line(b, -sum(f.amount for f in fl if f.amount < 0), sum(f.amount for f in fl if f.amount > 0),
                           value_now, xirr(cash), twr, twr_a, bval, bx))
 
@@ -327,13 +339,10 @@ def performance(rep, benchmark: tuple = DEFAULT_BENCHMARK, fetch: bool = True, e
                      "trade price, so the chart and the time-weighted return are approximate for them.")
     if not bseries:
         notes.append(f"No price history for the benchmark {benchmark[0]} (offline or not found): no comparison.")
-    elif bunits_negative(points):
-        notes.append("At some point you took out more than the benchmark investment was worth; its value went below zero "
-                     "for a while, so read the benchmark figures with care.")
+    elif capped:
+        notes.append(f"{', '.join(sorted(capped))}: you took out more than the same money in the benchmark would have been "
+                     "worth; the benchmark pays out at most its value, and its return is measured on what it paid out.")
     notes.append("Measured on what you invested in positions: cash left at the broker and currency positions are outside it. "
                  "Units received without a purchase (rewards, transfers in) count as gains.")
     return Performance(start, end, lines, points, benchmark, bsrc, dict(ps.source), notes)
 
-
-def bunits_negative(points: dict) -> bool:
-    return any(p.benchmark is not None and p.benchmark < -0.01 for pts in points.values() for p in pts)
