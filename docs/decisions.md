@@ -88,8 +88,8 @@ exchange tax, interest, fees, deposits/withdrawals and the bond payout.
 ### D19 · DEGIRO's stock exchange tax is a purchase/sale cost (2026-10-14)
 The Transacties export leaves it out, so P&L understated costs. It is now added to the matching trade's costs
 (copies of the rows; the parsed data isn't mutated). The meerwaardebelasting is unaffected (costs are excluded).
-Regression: DEGIRO realized and unrealized profit went down (stock exchange tax, connection fees, money market fund),
-income went up (dividends, net of withholding and interest); meerwaardebelasting unchanged.
+Regression: DEGIRO realized and unrealized profit went down (stock exchange tax, connection fees, money market
+fund) and income went up (dividends, net of withholding, and interest); meerwaardebelasting unchanged.
 
 ### D20 · Dividends of Belgian companies: Belgian withholding is a credit (2026-10-14)
 Withholding on an ISIN starting with BE is Belgian roerende voorheffing, not foreign tax: the base stays the gross
