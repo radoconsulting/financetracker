@@ -69,7 +69,7 @@ CSV_COLS = {"date": ("date",), "time": ("time",), "type": ("type",), "currency":
 
 
 def is_bitvavo_csv(text: str) -> bool:
-    head = text.lstrip("﻿").split("\n", 1)[0].lower().replace("received/paid", "received / paid")
+    head = text.lstrip("\ufeff").split("\n", 1)[0].lower().replace("received/paid", "received / paid")
     return "transaction id" in head and "received / paid" in head and "currency" in head
 
 
@@ -77,7 +77,7 @@ def csv_rows(text: str) -> list[dict]:
     """Bitvavo CSV -> the row dicts of the PDF reader ('paid' and 'fee' carry their unit at the end, as in the PDF)."""
     import csv
     import io
-    rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
+    rows = list(csv.reader(io.StringIO(text.lstrip("\ufeff"))))
     if not rows:
         return []
     low = [h.strip().lower() for h in rows[0]]
