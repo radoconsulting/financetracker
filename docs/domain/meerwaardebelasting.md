@@ -87,7 +87,8 @@ couldn't be read automatically; read it by hand.
   how that interacts with the 10% (whether the part already taxed is excluded) wasn't checked. The app counts the full
   gain; check with an adviser before relying on it. Savings in euro give no gain (currency = EUR, price 1).
 - **Bond funds**: Reynders tax (30% on the bond part, TIS) applies on top; the 10% applies to the rest of the
-  gain. Not implemented (backlog item 9).
+  gain. Implemented (backlog item 9, `engine/reynders.py`): the interest part is taken out of the 10% gain per lot
+  (`gain_for(deduct=...)`, also in `max_without_tax`), see docs/domain/belgian-taxes.md and D25.
 
 ## Sources
 

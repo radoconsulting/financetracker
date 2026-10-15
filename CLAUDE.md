@@ -33,6 +33,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/funds.py` | Fund catalog (TER, policy, stock exchange tax; checked 14-10-2026), ISIN check |
 | `src/meerwaarde/suggest.py` | Optional Gemini suggestions (BYO key, REST, grounding; parse + validate) (D23) |
 | `src/meerwaarde/engine/harvest.py` | Year-end harvesting: remaining room per person, cost model, plan, loss flags (D21) |
+| `src/meerwaarde/engine/reynders.py` | Reynders tax on bond funds: TIS / asset test / worst case per lot, ReyndersBook JSON, deduction from the 10% (D25) |
 | `src/meerwaarde/engine/income_tax.py` | 30% on dividends and interest, dividend exemption (shares only), foreign tax |
 | `src/meerwaarde/manual.py` | ManualBook JSON: positions no export covers (funds, tak 21/23, savings, gold) → BUY/SELL transactions, prices into the PriceBook (D24) |
 | `src/meerwaarde/profile.py` | TaxProfile JSON: partner, ownership, per-year exemption amounts, other sales and income |
@@ -41,8 +42,8 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | `src/meerwaarde/prices/` | PriceBook (override > manual entry > statement > online) and `fetch.py` (Bitvavo, justETF, Yahoo, ECB; disk cache) |
 | `src/meerwaarde/report.py` | `Report`: tables, per-person tax (`tax_summary`, `exemptions`), `simulate()`, income tax, stock exchange tax; `build_report()` |
 | `src/meerwaarde/export.py` | Excel: main workbook (`to_xlsx`) and yearly report (`tax_report_xlsx`); engine results as values, totals as formulas (D12) |
-| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions); `<data dir>/profile.json`, `funds.json`, `manual.json` |
-| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `app`; `--profile`, `--manual` |
+| `src/meerwaarde/app/streamlit_app.py` | the web app (tabs: Overview, Positions, Meerwaardebelasting, Simulator, Year-end, Switch, Tax report, Tax years, Prices, Data, Manual positions); `<data dir>/profile.json`, `funds.json`, `manual.json`, `reynders.json` |
+| `src/meerwaarde/cli.py` | `meerwaarde report`, `harvest`, `switch`, `tax-report`, `app`; `--profile`, `--manual`, `--reynders` |
 | `tests/` | pytest, synthetic data only |
 | `scripts/regression.py` | end-to-end check on `private/` |
 | `docs/` | domain knowledge and decisions: read the relevant file before changing behaviour |

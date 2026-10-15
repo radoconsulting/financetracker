@@ -5,14 +5,9 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–8 are done. Next in line: 9.
+Nothing open: items 1–9 are done. Next in line: 10.
 
 ## Next
-
-### 9. Reynders tax · M
-For bond funds and bond ETFs (more than 10% in bonds), estimate the 30% on the interest part when selling.
-Needs the taxable income per share (TIS) from the fund provider; entered by hand with a link to where to find
-it, then taken into account in the simulator and the switch planner.
 
 ### 10. Scheduled refresh + alerts · M
 Refresh prices on a schedule (daily, on the NAS) and notify when something changes that matters: tax-free room
@@ -55,3 +50,4 @@ with the key outside the data folder. Document running it behind the NAS reverse
 - 6. Year-end gain harvesting · done 2026-10-14 · Year-end tab, `meerwaarde harvest`, Excel sheet; real stock exchange tax rates, keeps the €1,000 carry-forward by default, loss flags, anti-abuse note (D21).
 - 7. Switch planner · done 2026-10-14 · Switch tab, `meerwaarde switch`, Excel sheet; real stock exchange tax rates, conservative yearly effect, spread plan over years; optional Gemini suggestions with your own key (D22, D23).
 - 8. Manual positions · done 2026-10-14 · Manual positions tab and `--manual` JSON: funds, tak 21/23, savings, gold as ordinary FIFO transactions under their own broker label; price now and 31-12-2025 value per position; Excel sheet; year-end harvesting skips insurance (D24). Tak 21 roerende voorheffing on early surrender not handled.
+- 9. Reynders tax · done 2026-10-15 · Reynders panel (Meerwaardebelasting tab) and `--reynders` JSON: TIS per lot, asset test or worst case; interest part out of the 10%; in the simulator, switch planner, tax report, Excel and PDF; harvesting skips subject funds; cap and deduction are settings (D25).

@@ -132,3 +132,18 @@ harvesting skips class `Insurance`: a policy can't be sold and bought back at ma
 losses on one are still flagged. Not handled: tak 21 roerende voorheffing on early surrender (docs/domain).
 Stored in `<data dir>/manual.json` (git-ignored, like `profile.json`). Regression unchanged (no manual positions in it).
 
+### D25 · Reynders tax: TIS per lot, then asset test, then worst case; settings for the open points (2026-10-15)
+`engine/reynders.py`. The base per FIFO lot is TIS(sale) − TIS(purchase) (latest published TIS on or before each date,
+in EUR at that date via `PriceBook.eur_per`); without TIS the asset test (real gain × bond share); without either the
+whole real gain, labelled "worst case". Open points made settings: `cap_at_gain` (base ≤ the lot's real gain, default
+on) and `deduct_from_cgt` (the interest part is taken out of the 10% gain, default on; the deduction never exceeds the
+lot's 10% gain, so pre-2026 units with a high 31-12-2025 value don't create a 10% loss). The deduction goes through
+`gain_for(deduct=)` / `max_without_tax(deduct=)`, so the FIFO maximum stays exact (each lot stays linear in the
+quantity). Which funds are subject is the user's call (`reynders.json`, `--reynders`); without an entry nothing is
+taxed and bond ETFs are flagged in `Report.reynders_flags()`, kept apart from `rep.warnings` so the regression's note
+count doesn't change. In the app a flagged bond ETF defaults to subject, so saving the panel never silences a flag
+without a decision. Year-end harvesting skips subject funds (30% without exemption makes harvesting cost real tax);
+the switch planner counts the Reynders tax in the cost now and in each year of the spread plan. "Max without tax"
+covers the 10% only; the simulator warns when the sales also pay Reynders tax. Regression unchanged (no Reynders file
+in it).
+

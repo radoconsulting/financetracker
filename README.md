@@ -38,6 +38,10 @@ Everything runs on your own machine. Your exports never leave it; only price loo
 - **Manual positions**: funds at a bank, tak 21/23 policies, savings and investment gold that no export covers.
   Enter purchases and sales, a current price and the 31-12-2025 value on the **Manual positions** tab (or in a JSON
   file for `--manual`); they count in profit and in the meerwaardebelasting under the right asset type.
+- **Reynders tax** on bond funds and bond ETFs: 30% on the interest part when you sell, from the TIS values the fund
+  provider publishes (or the fund's bond share); that part is taken out of the 10%. Enter the funds on the
+  Meerwaardebelasting tab (*Reynders tax* panel) or in a JSON file for `--reynders`; the simulator, switch planner and
+  yearly report include it.
 - **Yearly tax report** (Excel and PDF): meerwaardebelasting per person, dividends and interest, stock exchange
   tax per broker, and a checklist including reporting your foreign accounts to the National Bank.
 
@@ -98,7 +102,8 @@ meerwaarde report Volledige_geschiedenis.pdf Transactions.pdf LYNX_2023.pdf LYNX
 ```
 
 Options: `--xlsx [FILE]` for the Excel workbook (default `meerwaarde-<date>.xlsx`, in the `--out` folder when
-given), `--prices my_prices.csv`, `--manual manual.json` (positions no export covers; the app's `manual.json`, format
+given), `--prices my_prices.csv`, `--reynders reynders.json` (bond funds subject to the Reynders tax, format in `src/meerwaarde/engine/reynders.py`),
+`--manual manual.json` (positions no export covers; the app's `manual.json`, format
 in `src/meerwaarde/manual.py`; it can be used without any PDF), `--offline`, `--year 2027`, `--exemption 11000`, `--no-original-price`,
 `--withdrawals-are-sales`, `-v` for all notes.
 

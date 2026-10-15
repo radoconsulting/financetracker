@@ -59,12 +59,29 @@ Same data: VWCE (IE00BK5BQT80) was charged 0.12% on purchases until 2024 and **1
 - Irish-domiciled ETFs lose 15% US withholding inside the fund on US dividends; that applies to both distributing
   and accumulating classes.
 
-## Reynders tax
+## Reynders tax (implemented, backlog item 9: `engine/reynders.py`, D25)
 
-Funds (including ETFs) with more than 10% in debt claims: 30% on the interest part (TIS, taxable income per
-share) when units are sold. The 10% meerwaardebelasting applies to the rest of the gain. TIS per share comes from
-the fund provider. Relevant positions today: iShares $ Corp Bond (IE0032895942), iShares EUR Covered Bond
-(IE00B3B8Q275).
+Art. 19bis WIB92. Funds (including ETFs) with more than 10% in debt claims (25% for units acquired before
+1 January 2018): 30% on the interest part when units are sold or redeemed, no exemption. A foreign broker doesn't
+withhold it: declare it in the tax return (Curvo names code 1444, part VII; check it in the return).
+
+| Topic | What sources say | App |
+|---|---|---|
+| Base | The interest part of the gain: TIS (taxable income per share) at the sale minus TIS at the purchase, published by the fund provider | TIS method, per FIFO lot, each TIS converted to EUR at its date |
+| No TIS | Brokers apply an "asset test": the gain × the fund's bond share (Curvo); without information some tax 100% of the gain | asset test with the bond share you enter, else worst case (100% of the gain), flagged |
+| Cap | Not settled in the sources found; the residual approach implies a gain is needed | setting `cap_at_gain` (default on): base ≤ real gain of the lot, zero on a loss |
+| Distributing funds | In principle outside art. 19bis, but most are taxed in practice because the prospectus doesn't commit to paying out everything (Curvo, Auryth) | your call per fund (`subject`); bond ETFs default to subject in the app |
+| With the 10% | Reynders applies first, without exemption; the 10% and its exemption apply to the rest of the gain (Auryth, Geldvos, Delen) | setting `deduct_from_cgt` (default on); the deduction never exceeds a lot's 10% gain |
+| Real gain | Sale price − purchase price, without costs; not the 31-12-2025 value | `Lot.gross_eur_unit` |
+
+Units bought before the first TIS you enter count from TIS 0 (worst case within the cap). Year-end harvesting leaves
+subject funds out; the switch planner adds their Reynders tax to the cost now and to each year of the spread plan.
+
+Sources (consulted 15 October 2026): Curvo, Reynders taks (https://curvo.eu/nl/artikel/reynders-taks);
+Auryth, Meerwaardebelasting en de Reynderstaks (https://auryth.ai/nl/blog/meerwaardebelasting-reynderstaks/);
+Geldvos (https://geldvos.com/meerwaardebelasting-belgie-complete-gids/); Belfius
+(https://www.belfius.be/retail/nl/producten/sparen-beleggen/info-publicaties/meerwaardebelasting/index.aspx).
+TIS values: the fund provider's Belgian tax information (iShares, Vanguard, Amundi publish TIS/BTIS per share).
 
 ## Stock exchange tax in the yearly report (backlog item 5)
 
