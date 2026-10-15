@@ -166,9 +166,12 @@ def plan_harvest(rep, keep_carry: bool = True, costs: CostModel | None = None, e
                            tax=p["tax"])
 
     # candidates
-    cands = []
+    cands, reynders_skipped = [], []
     for h in rep.portfolio.holdings():
         if h.asset_class in SKIP_CLASSES or h.asset in exclude or f"{h.broker}|{h.asset}" in exclude:
+            continue
+        if calc.reynders.applies(h.asset):      # 30% on the interest part, no exemption: harvesting costs real tax
+            reynders_skipped.append(h.name)
             continue
         now = rep.prices.now(h)
         if not now or not now.value:
@@ -243,6 +246,9 @@ def plan_harvest(rep, keep_carry: bool = True, costs: CostModel | None = None, e
     if keep_carry and any(s["reserve"] for s in status.values()):
         notes.append(f"€{er.carry_per_year:,.0f} of room is kept so it carries forward to next year (worth the same as "
                      "harvesting it, without trading costs).")
+    if reynders_skipped:
+        notes.append("Left out because the Reynders tax (30% on the interest part, no exemption) would be due on the sale: "
+                     + ", ".join(sorted(set(reynders_skipped))) + ".")
     if not any(s["room"] > 0 for s in status.values()):
         notes.append("No exemption left this year: nothing to harvest.")
     return HarvestPlan(rules.year, [(p.id, p.name) for p in hh.persons], status, keep_carry, lines, losses, notes)

@@ -146,3 +146,36 @@ def test_json_round_trip(tmp_path):
     assert again.to_dict() == book.to_dict()
     assert again.funds[BOND].tis_at(date(2026, 5, 1)) == (date(2026, 1, 15), 2.0)
     assert ReyndersBook.load(tmp_path / "none.json").funds == {}
+
+
+def test_switch_counts_reynders_tax_in_the_cost_now():
+    from meerwaarde.engine.switch import compare, sources_for, spread_plan
+    from meerwaarde.funds import Fund
+    rep = make(ReyndersFund(BOND, debt_pct=0.5))
+    srcs = sources_for(rep, {("B", BOND)})
+    target = Fund("XX0000000088", "Target", ter=0.002, accumulating=True, tob_rate=0.0012, verified=True)
+    case = compare(rep, srcs, [target])[0]
+    assert case.reynders_now == pytest.approx(0.30 * 100 * 10.0)
+    assert case.now == pytest.approx(case.cgt_now + case.reynders_now + case.costs)
+    plan = spread_plan(rep, srcs, case)
+    assert plan.steps[0].costs >= 0.30 * 100 * 10.0       # all units fit this year's room; their Reynders tax is paid
+
+
+def test_exports_have_the_reynders_sheet_pdf_section_and_checklist():
+    import io
+    from openpyxl import load_workbook
+    from meerwaarde.export import tax_report_xlsx, to_xlsx
+    from meerwaarde.pdf_report import tax_report_pdf
+    from meerwaarde.taxreport import tax_year_report
+    txns = [tx(datetime(2026, 2, 1), BUY, BOND, 100, 9000), tx(datetime(2026, 6, 1), SELL, BOND, -40, 4400)]
+    rep = make(ReyndersFund(BOND, debt_pct=0.5), txns=txns)
+    ws = load_workbook(io.BytesIO(to_xlsx(rep)))["Reynders tax"]
+    head = [c.value for c in ws[1]]
+    assert head[:3] == ["Broker", "Asset", "Name"] and ws.max_row >= 5
+    formulas = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
+    assert any("SUM(" in f for f in formulas) and any("*B" in f for f in formulas)
+    ytr = tax_year_report(rep, 2026)
+    assert ytr.reynders["tax"] == pytest.approx(0.30 * 400.0)
+    assert any(c.startswith("Reynders tax") for c in ytr.checklist)
+    assert "Reynders 2026" in load_workbook(io.BytesIO(tax_report_xlsx(ytr))).sheetnames
+    assert tax_report_pdf(ytr)[:4] == b"%PDF"

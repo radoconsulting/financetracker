@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Manual positions", "Prices", "How calculated")
+          "Year-end", "Switch", "Reynders tax", "Manual positions", "Prices", "How calculated")
 
 
 @dataclass
@@ -167,7 +167,8 @@ TAX = [
     Col("price_31dec_eur", "Price 31-12-2025 (€)", PRICE, 13),
     Col("avg_purchase_eur", "Original purchase price, average (€)", PRICE, 15),
     Col("proceeds_eur", "Proceeds (€)", EUR, 16), Col("acquisition_eur", "Purchase value used (€)", EUR, 16),
-    Col("taxable_gain_eur", "Taxable gain (€)", EUR, 16), Col("missing", "Missing", width=16),
+    Col("taxable_gain_eur", "Taxable gain (€)", EUR, 16),
+    Col("reynders_base_eur", "Interest part, Reynders tax (€)", EUR, 16), Col("missing", "Missing", width=16),
 ]
 SIM = [
     Col("broker", "Broker", width=10), Col("asset", "Asset", width=15), Col("name", "Name", width=36),
@@ -191,6 +192,35 @@ MANUAL = [
     Col("cash_eur", "Cash effect after costs (€)", EUR, 16, '=IF({qty}{r}="","",-{qty}{r}*{price_eur}{r}-{costs_eur}{r})'),
     Col("price_now_eur", "Price now (€)", PRICE, 13), Col("price_now_date", "Price date", DATE, 11),
     Col("price_31dec_eur", "Value 31-12-2025 (€)", PRICE, 13), Col("note", "Note", width=40),
+]
+
+REYNDERS = [
+    Col("broker", "Broker", width=10), Col("asset", "Asset", width=15), Col("name", "Name", width=36),
+    Col("status", "Status", width=8), Col("date", "Sale date", DATE, 11), Col("qty", "Quantity", QTY, 12),
+    Col("price_eur", "Price (€)", PRICE, 13), Col("base_eur", "Interest part, taxed at 30% (€)", EUR, 18),
+    Col("method", "Method", width=28),
+]
+
+
+def _reynders_sheet(ws, table, rate: float, notes: list[str]) -> None:
+    """Lines subject to the Reynders tax with a live total: tax = base × rate (an input)."""
+    first, last, L = _table(ws, REYNDERS, _records(table))
+    r = max(last, first - 1) + 2
+    b = L["base_eur"]
+    _write(ws, r, 1, "Rate", BOLD)
+    _write(ws, r, 2, rate, INPUT, PCT, INPUT_FILL)
+    _write(ws, r + 1, 1, "Interest part", BOLD)
+    _write(ws, r + 1, 2, f"=SUM({b}{first}:{b}{max(first, last)})" if last >= first else 0, fmt=EUR)
+    _write(ws, r + 2, 1, "Reynders tax", BOLD, border=TOTAL_BORDER)
+    _write(ws, r + 2, 2, f"=B{r + 1}*B{r}", BOLD, EUR, border=TOTAL_BORDER)
+    for i, n in enumerate(notes):
+        _write(ws, r + 4 + i, 1, n, NOTE)
+
+
+REYNDERS_NOTES = [
+    "Status Open = if you sold everything today. Per-person shares follow the broker/position ownership.",
+    "Method: TIS = TIS at the sale minus TIS at the purchase; asset test = real gain × bond share; worst case = the whole "
+    "real gain (no TIS or bond share entered). The interest part is taken out of the gain for the 10%.",
 ]
 
 
@@ -702,6 +732,8 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     if not tax.empty:
         tax = tax.sort_values(["status", "taxable_gain_eur"], ascending=[False, False])
     data_sheet("Meerwaardebelasting", TAX, _records(tax))
+    _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
+                    REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
     _table(sheets["Prices"], PRICES, _price_rows(rep))
     _exemption_sheet(sheets["Exemption"], rep)
@@ -925,6 +957,8 @@ def tax_report_workbook(ytr) -> Workbook:
         _write(sales, last + 1, 1, "Total", BOLD, border=TOTAL_BORDER)
         g = L["taxable_gain_eur"]
         _write(sales, last + 1, len(TR_SALES), f"=SUM({g}{first}:{g}{last})", BOLD, EUR, border=TOTAL_BORDER)
+    if ytr.reynders.get("base"):
+        _reynders_sheet(wb.create_sheet(f"Reynders {ytr.year}"), ytr.reynders_detail, ytr.reynders["rate"], REYNDERS_NOTES[1:])
     _table(wb.create_sheet(f"Income {ytr.year}"), TR_INCOME, _records(ytr.income_detail))
     _table(wb.create_sheet("Stock exchange tax"), TR_TOB, _records(ytr.tob_detail))
     ex = wb.create_sheet("Exemption")

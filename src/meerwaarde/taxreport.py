@@ -39,6 +39,8 @@ class TaxYearReport:
     checklist: list[str]
     notes: list[str] = field(default_factory=list)
     rules_text: list[str] = field(default_factory=list)
+    reynders: dict = field(default_factory=dict)           # reynders_summary() of the year's sales
+    reynders_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def complete(self) -> bool:
@@ -73,7 +75,8 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
         shares = hh.share(l.broker, l.asset)
         row = dict(broker=l.broker, date=l.date, asset=l.asset, name=l.name, type=LAW_TYPES[l.law_type][0], qty=l.qty,
                    price_eur=l.price, price_31dec_eur=l.reference_price, proceeds_eur=round(l.proceeds, 2),
-                   acquisition_eur=round(l.acquisition, 2), taxable_gain_eur=round(l.taxable_gain, 2))
+                   acquisition_eur=round(l.acquisition, 2), taxable_gain_eur=round(l.taxable_gain, 2),
+                   reynders_base_eur=round(l.reynders_base, 2))
         if not hh.single:
             for pid in hh.ids:
                 row[f"share_{pid}"] = shares.get(pid, 0.0)
@@ -105,10 +108,19 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
             f"return for {year + 1}.")
         checklist.append("Keep proof of the 31-12-2025 values (broker statements of that date and the prices in this "
                          "report) and of original purchase prices above them, for sales until 2030.")
+    reynders = rep.reynders_summary(sold)
+    if reynders["base"] > 0.005:
+        checklist.append(
+            f"Reynders tax: the interest part of selling bond funds (€{reynders['base']:,.2f}) is movable income taxed at "
+            f"30%, no exemption; foreign brokers don't withhold it. Estimated tax: €{reynders['tax']:,.2f}. Several "
+            "guides name code 1444 (part VII, income without withholding); check the code in your return. Keep the TIS "
+            "values (fund provider) you used.")
     checklist.append("Stock exchange tax: the brokers withhold it (amounts below). If a foreign broker hasn't, you file "
                      "the stock exchange tax return yourself, by the last working day of the second month after the trade.")
 
     notes = []
+    if rep.reynders_flags():
+        notes.append(f"{len(rep.reynders_flags())} bond fund(s) without a Reynders entry: their Reynders tax isn't counted.")
     if not (pd.Timestamp(today) > pd.Timestamp(year, 12, 31)):
         notes.append(f"{year} isn't over: sales, dividends and interest are counted up to {today:%d-%m-%Y}.")
     if "DEGIRO" in brokers and not any(i.broker == "DEGIRO" for i in rep.portfolio.income) and not rep.portfolio.tob_separate:
@@ -124,4 +136,4 @@ def tax_year_report(rep: Report, year: int | None = None) -> TaxYearReport:
 
     return TaxYearReport(year, today, [(p.id, p.name) for p in hh.persons], cgt, exemption, history, sales, inc, detail,
                          rep.tob_summary(year), rep.tob_detail(year), accounts, checklist, notes,
-                         RULES_TEXT + INCOME_RULES_TEXT)
+                         RULES_TEXT + INCOME_RULES_TEXT, reynders, rep.reynders_table(sold))

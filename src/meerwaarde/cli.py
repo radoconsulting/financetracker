@@ -24,11 +24,12 @@ def _check_name(value, ext, flag):
 
 
 def _build(a):
+    from .engine.reynders import ReyndersBook
     from .manual import ManualBook
     from .profile import TaxProfile
     from .report import build_report
     files = [Path(f) for f in a.files]
-    missing = [str(f) for f in files + ([Path(a.manual)] if a.manual else []) if not f.exists()]
+    missing = [str(f) for f in files + [Path(x) for x in (a.manual, a.reynders) if x] if not f.exists()]
     if missing:
         sys.exit(f"File not found: {', '.join(missing)}")
     if not files and not a.manual:
@@ -40,7 +41,8 @@ def _build(a):
     overrides = Path(a.prices).read_text() if a.prices else None
     return build_report(files, fetch_prices=not a.offline, options=opts, rules=rules, overrides_csv=overrides,
                         today=date.fromisoformat(a.today) if a.today else None, profile=profile,
-                        manual=ManualBook.load(a.manual) if a.manual else None)
+                        manual=ManualBook.load(a.manual) if a.manual else None,
+                        reynders=ReyndersBook.load(a.reynders) if a.reynders else None)
 
 
 def _out_path(value, out, default):
@@ -64,6 +66,9 @@ def cmd_report(a):
     print(f"  Net taxable gain          {_eur(t['net'])}")
     print(f"  Exemption                 {_eur(t['exemption'])}")
     print(f"  Tax (10%)                 {_eur(t['tax'])}")
+    ry = rep.reynders_summary(lines)
+    if ry["base"]:
+        print(f"  Reynders tax (30% on the interest part of bond funds {_eur(ry['base'])}): {_eur(ry['tax'])}")
     sold = rep.tax_summary(rep.sold_lines())["people"]
     for pid, p in sold.items():
         who = "" if rep.household.single else f" ({rep.household.name(pid)})"
@@ -74,6 +79,8 @@ def cmd_report(a):
     if len(miss):
         print("\nNo current price for: " + ", ".join(f"{r.name} ({r.asset})" for r in miss.itertuples()))
         print("Add them to a prices CSV (asset,price_now,price_31dec) and pass it with --prices.")
+    for f in rep.reynders_flags():
+        print("\n" + f.replace("on the Reynders tax panel (Meerwaardebelasting tab)", "in a --reynders file"))
     if rep.warnings and a.verbose:
         print("\nNotes")
         for w in rep.warnings:
@@ -194,6 +201,11 @@ def cmd_tax_report(a):
         print(f"  Dividend exemption used {_eur(it.exemption_used)}, taxable {_eur(it.taxable)}, tax (30%) {_eur(it.tax)}"
               + (f", already withheld in Belgium {_eur(it.be_withheld)}" if abs(it.be_withheld) > 0.005 else "")
               + f", to pay {_eur(it.to_pay)}")
+    if ytr.reynders.get("base"):
+        print(f"\nReynders tax: interest part {_eur(ytr.reynders['base'])}, tax (30%) {_eur(ytr.reynders['tax'])}")
+        if len(ytr.persons) > 1:
+            for pid, name in ytr.persons:
+                print(f"  {name}: {_eur(ytr.reynders['people'][pid]['tax'])}")
     print("\nStock exchange tax")
     for r in ytr.tob.itertuples():
         print(f"  {r.broker:<8} {_eur(r.amount_eur):>12}  {r.basis}")
@@ -236,6 +248,8 @@ def main(argv=None):
                                          "(the app keeps it in its data folder as profile.json)")
         x.add_argument("--manual", help="JSON with positions no export covers: funds, tak 21/23 policies, savings, gold "
                                         "(the app keeps it in its data folder as manual.json)")
+        x.add_argument("--reynders", help="JSON with bond funds subject to the Reynders tax: TIS values or bond share "
+                                          "(the app keeps it in its data folder as reynders.json)")
         x.add_argument("--prices", help="CSV with your own prices: asset,price_now,price_31dec (EUR)")
         x.add_argument("--offline", action="store_true", help="don't look up prices online")
         x.add_argument("--year", type=int, default=2026, help="tax year (default 2026)")

@@ -1,7 +1,7 @@
 """Switch planner (backlog item 7): sell positions and buy a target fund.
 
-For each candidate target: the one-time cost now (meerwaardebelasting on the gain above this year's room, stock
-exchange tax on the sale and the purchase, commissions, spread), the yearly effect (dividend tax no longer paid
+For each candidate target: the one-time cost now (meerwaardebelasting on the gain above this year's room, Reynders tax
+on bond funds, stock exchange tax on the sale and the purchase, commissions, spread), the yearly effect (dividend tax no longer paid
 when moving from a distributing to an accumulating fund, minus the 10% that may come back as meerwaardebelasting on
 the reinvested dividends; the difference in running costs), the extra stock exchange tax when the target is sold
 one day, break-even and the net effect over a horizon. Plus a plan that spreads the sales over the years so each
@@ -59,6 +59,7 @@ class SwitchCase:
     exit_tob_extra: float          # once, when the target is sold one day (vs selling the source then)
     horizon: int
     notes: list = field(default_factory=list)
+    reynders_now: float = 0.0      # Reynders tax on selling bond-fund sources (30%, no exemption)
 
     @property
     def costs(self) -> float:
@@ -66,7 +67,7 @@ class SwitchCase:
 
     @property
     def now(self) -> float:
-        return self.cgt_now + self.costs
+        return self.cgt_now + self.reynders_now + self.costs
 
     @property
     def yearly(self) -> float:
@@ -156,7 +157,9 @@ def compare(rep, sources: list[Source], targets: list[Fund], horizon: int = 10,
     (conservative: assumes your gains then exceed the exemption)."""
     costs = costs or CostModel()
     sell = {s.key: s.qty for s in sources}
-    cgt_now = rep.simulate(sell=sell).summary["tax"] - rep.simulate().summary["tax"]
+    sim = rep.simulate(sell=sell)
+    cgt_now = sim.summary["tax"] - rep.simulate().summary["tax"]
+    reynders_now = sim.reynders.get("tax", 0.0)
     value = sum(s.value for s in sources)
     by_broker: dict[str, float] = {}
     for s in sources:
@@ -187,8 +190,10 @@ def compare(rep, sources: list[Source], targets: list[Fund], horizon: int = 10,
         if not f.verified:
             notes.append(f"{f.ticker or f.isin}: not all facts are verified (stock exchange tax rate, TER): check them "
                          "(KID, justETF, a small test order) before buying.")
+        if reynders_now:
+            notes.append(f"Includes €{reynders_now:,.0f} Reynders tax on the bond funds sold (30% on the interest part).")
         cases.append(SwitchCase(f, rate, src, value, cgt_now, tob_sell, tob_buy, commission, spread, saved, back,
-                                ter_saved, exit_extra, horizon, notes))
+                                ter_saved, exit_extra, horizon, notes, reynders_now))
     return cases
 
 
@@ -214,10 +219,13 @@ def spread_plan(rep, sources: list[Source], case: SwitchCase, costs: CostModel |
             if not pool:
                 continue
             eff = min((room[p] / sh for p, sh in s.shares.items() if sh > 0), default=0.0)
-            q = max_without_tax(pool, s.price, s.ref, when, rules, max(0.0, eff), 1.0)
+            deduct = rep.tax.deduct_for(s.asset, s.price, when)
+            q = max_without_tax(pool, s.price, s.ref, when, rules, max(0.0, eff), 1.0, deduct)
             if q <= 0:
                 continue
-            g, _a, _m = gain_for(pool, q, s.price, s.ref, when, rules)
+            g, _a, _m = gain_for(pool, q, s.price, s.ref, when, rules, deduct)
+            if rep.tax.reynders.applies(s.asset):
+                cost += rep.tax.reynders.rules.rate * rep.tax.reynders.for_sale(s.asset, pool, q, s.price, when)[0]
             left = q
             while left > 1e-9 and pool:              # take the oldest lots
                 t = min(pool[0].qty, left)

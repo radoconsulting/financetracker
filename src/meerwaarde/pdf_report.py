@@ -143,6 +143,19 @@ def tax_report_pdf(ytr: TaxYearReport, target=None):
                            "price, never creating a loss); the purchase price for units bought later; costs left out."
                            + (" Per-person shares are in the Excel version." if many else ""), SMALL))
 
+    if ytr.reynders.get("base"):
+        s.append(Paragraph("Reynders tax on bond funds (30%)", H3))
+        rows = [["Name"] + ([n for _, n in ytr.persons] if many else []) + ["Total"]]
+        people = ytr.reynders["people"]
+        rows.append(["Interest part"] + ([eur(people[pid]["base"]) for pid, _ in ytr.persons] if many else [])
+                    + [eur(ytr.reynders["base"])])
+        rows.append(["Reynders tax"] + ([eur(people[pid]["tax"]) for pid, _ in ytr.persons] if many else [])
+                    + [eur(ytr.reynders["tax"])])
+        n = len(rows[0])
+        s.append(_table(rows, [60 * mm] + [30 * mm] * (n - 1), right=tuple(range(1, n)), total_rows=(2,)))
+        s.append(Paragraph("No exemption. The interest part is not taxed again at 10%. Lines and the method used per "
+                           "fund are in the Excel version.", SMALL))
+
     s.append(Paragraph("2. Dividends and interest (30%)", H2))
     for pid, name in ytr.persons:
         block = ([Paragraph(escape(name), H3)] if many else []) + _income(ytr, pid)
