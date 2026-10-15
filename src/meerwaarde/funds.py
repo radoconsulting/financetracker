@@ -55,6 +55,9 @@ CATALOG: dict[str, Fund] = {f.isin: f for f in [
          "0.12% (curvo.eu)", 127000, "curvo.eu, Aug 2026"),
     Fund("IE00BFY0GT14", "SPDR MSCI World UCITS ETF (Acc)", "SWRD", "MSCI World", 0.0012, True, 0.0012,
          "0.12% (curvo.eu; also charged by DEGIRO)", 17700, "curvo.eu, Aug 2026"),
+    Fund("IE00B5BMR087", "iShares Core S&P 500 UCITS ETF USD (Acc)", "CSPX", "S&P 500", 0.0007, True, 0.0012,
+         "0.12% (docs/domain/belgian-taxes.md)", None, "iShares (TER); not re-checked", verified=False,
+         reason="accumulating twin of IUSA"),
 ]}
 WORLD_TARGETS = ("IE00B44Z5B48", "IE0003XJA0J9", "IE00B3YLTY66", "IE00B6R52259", "IE00BK5BQT80")
 
