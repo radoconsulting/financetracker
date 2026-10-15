@@ -5,11 +5,47 @@ Size: S = a day or less, M = a few days, L = a week or more.
 
 ## Now
 
-Nothing open: items 1–10 and 12–15 are done (11 skipped for now). To confirm with real files: the first Bitvavo sync, and a DEGIRO and Bitvavo CSV export.
+Items 1–10 and 12–15 are done (11 skipped for now). Now: 16–24 below, in order. To confirm with real files: the first Bitvavo sync, and a DEGIRO and Bitvavo CSV export.
 
 ## Next
 
-Empty.
+Agreed on 15 October 2026 (from the feature review), in this order.
+
+### 16. Net worth over time · S
+One history of everything: all brokers, manual positions and cash, per month, with the split by broker and by asset
+class; builds on the performance value series.
+
+### 17. Fees and costs dashboard · S
+Per year and broker: commissions, stock exchange tax, AutoFX/conversion costs, connection fees, and the running costs
+of funds (TER drag on the value held); what they add up to over 10 years.
+
+### 18. Fund red flags · S
+Flag distributing funds (30% dividend tax), Belgian-registered accumulating funds (1.32% stock exchange tax), high TER
+and bond exposure (Reynders), each with a cheaper alternative from the catalog.
+
+### 19. Dividend and cash-flow calendar · S
+Expected dividends for the next 12 months from the past payments per unit, and the tax due on them (dividend tax,
+meerwaardebelasting, Reynders) and when.
+
+### 20. Multi-year tax plan 2026–2030 · M
+Spread the gains you'd realise over the years so each person's exemption plus carry-forward is used every year, until
+the original-price window closes at the end of 2030; combines harvesting and the switch planner.
+
+### 21. Tax return helper · S–M
+Per person: which amount goes in which code (1444-11, dividend exemption, foreign accounts, the meerwaardebelasting
+codes once published with the 2027 return), ready to copy into Tax-on-web.
+
+### 22. Savings and pension savings · M
+Regulated savings accounts (interest exemption) and pension savings (pensioensparen: tax reduction on contributions,
+the advance tax at 60) as positions with their own rules.
+
+### 23. Corporate actions · M
+Splits, mergers and spin-offs from the Flex Corporate Actions section (and statements) applied to the lots, instead
+of only flagged.
+
+### 24. More brokers built in · M
+Bolero, Saxo and Trade Republic as built-in formats. Without sample files: presets of the CSV mapping marked
+unverified until checked against a real export.
 
 ## Later
 
