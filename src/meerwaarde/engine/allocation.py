@@ -43,6 +43,8 @@ ISIN_COUNTRY = {"US": "United States", "CA": "Canada", "GB": "United Kingdom", "
 CLASS_BUCKET = {"Stock": "Equity", "ETF": "Equity", "Fund": "Equity", "Turbo": "Equity (leveraged)", "Bond ETF": "Bonds",
                 "Bond": "Bonds", "Crypto": "Crypto", "Cash/FX": "Cash", "Gold": "Gold", "Insurance": "Insurance"}
 DIMENSIONS = ("asset_class", "region", "country", "sector", "currency")
+NOT_REGIONAL = "Not regional (crypto, gold, cash, policies)"
+OTHER = "Other (beyond the funds' largest countries)"
 
 
 @dataclass
@@ -126,7 +128,7 @@ def allocation(rep, overrides: dict | None = None, fetch: bool | None = None) ->
     fetcher = rep.prices.fetcher if fetch in (None, True) else None
     rows, totals = [], {d: defaultdict(float) for d in DIMENSIONS}
     top = defaultdict(lambda: [None, 0.0, set()])
-    funds = []
+    funds: dict = {}                       # isin -> (name, {isin: weight}): one entry per fund, whatever the broker
     for h in rep.portfolio.holdings():
         p = rep.prices.now(h)
         if not p:
@@ -141,7 +143,8 @@ def allocation(rep, overrides: dict | None = None, fetch: bool | None = None) ->
             totals["asset_class"][k] += value * w
         for c, w in e.countries.items():
             totals["country"][c] += value * w
-            totals["region"][REGION_OF.get(c, "Other" if c not in ("Unknown", "—") else c)] += value * w
+            region = NOT_REGIONAL if c == "—" else ("Unknown" if c == "Unknown" else REGION_OF.get(c, OTHER))
+            totals["region"][region] += value * w
         for s, w in e.sectors.items():
             totals["sector"][s] += value * w
         for c, w in e.currencies.items():
@@ -153,16 +156,13 @@ def allocation(rep, overrides: dict | None = None, fetch: bool | None = None) ->
             t[0] = t[0] or name
             t[1] += value * w
             t[2].add(h.name if len(e.top) > 1 or w < 1 else "direct")
-        if len(e.top) > 1:
-            funds.append((h.name, {i: w for i, _n, w in e.top if i}))
+        if len(e.top) > 1 and h.asset not in funds:
+            funds[h.asset] = (h.name, {i: w for i, _n, w in e.top if i})
     total = sum(r["value"] for r in rows)
     overlap = []
-    seen = set()
-    for i, (a, ta) in enumerate(funds):
-        for b, tb in funds[i + 1:]:
-            if (a, b) in seen or a == b:
-                continue
-            seen.add((a, b))
+    items = list(funds.values())
+    for i, (a, ta) in enumerate(items):
+        for b, tb in items[i + 1:]:
             common = set(ta) & set(tb)
             if common:
                 overlap.append((a, b, sum(min(ta[x], tb[x]) for x in common), len(common)))

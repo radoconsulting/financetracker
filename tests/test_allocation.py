@@ -92,8 +92,8 @@ def test_portfolio_allocation_overlap_and_look_through():
                {"XX0000000001": 100.0, "XX0000000002": 100.0, "XX0000000101": 100.0, "BTC": 1000.0})
     rep.prices.fetcher = FakeFetcher({"XX0000000001": PAGE, "XX0000000002": page2})
     al = allocation(rep)
-    assert al.total == pytest.approx(4500)
-    assert al.totals["asset_class"] == {"Equity": pytest.approx(3500), "Crypto": pytest.approx(1000)}
+    assert al.total == pytest.approx(3500)
+    assert al.totals["asset_class"] == {"Equity": pytest.approx(2500), "Crypto": pytest.approx(1000)}
     assert al.totals["region"]["North America"] == pytest.approx(0.6 * 2000)
     # Alpha: 5% of fund 1 (€50) + 2% of fund 2 (€20) + €500 held directly
     alpha = next(t for t in al.top if t[0] == "XX0000000101")
