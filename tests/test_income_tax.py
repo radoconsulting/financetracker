@@ -95,7 +95,7 @@ def test_report_workbook_formulas(rep):
     import io
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(tax_report_xlsx(tax_year_report(rep, 2026))))
-    assert wb.sheetnames == ["Report", "Sales 2026", "Income 2026", "Stock exchange tax", "Exemption", "Checklist"]
+    assert wb.sheetnames == ["Report", "Tax return", "Sales 2026", "Income 2026", "Stock exchange tax", "Exemption", "Checklist"]
     ws = wb["Report"]
     formulas = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
     assert any("$B$4" in f for f in formulas) and any("$B$5" in f for f in formulas)    # rates are input cells
