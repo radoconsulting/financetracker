@@ -25,7 +25,7 @@ explain why in the commit message and regenerate the baseline with `python scrip
 | Path | What |
 |---|---|
 | `src/meerwaarde/models.py` | Transaction, Lot, RealizedRow, Holding, IncomeRow; transaction kinds; `law_type()` |
-| `src/meerwaarde/parsers/` | `degiro_csv.py` and Bitvavo CSV (`bitvavo.csv_rows`) feed the PDF parsers' row logic; `mapped.py` (column-mapped CSV of other brokers, `csv_formats.json`) (D29); `bitvavo.py` (pdfplumber tables), `degiro.py` (Transacties: layout text + regex), `degiro_account.py` (Rekeningoverzicht: column-aware words), `lynx.py` (IBKR statement, column-aware), `classify.py` (asset class guesses), `__init__.py` (detect, parse_file, combine) |
+| `src/meerwaarde/parsers/` | `degiro_csv.py` and Bitvavo CSV (`bitvavo.csv_rows`) feed the PDF parsers' row logic; `mapped.py` (column-mapped CSV of other brokers, `csv_formats.json`) (D29); `bitvavo.py` (pdfplumber tables), `degiro.py` (Transacties: layout text + regex), `degiro_account.py` (Rekeningoverzicht: column-aware words), `lynx.py` (IBKR statement, column-aware), `ibkr_history.py` (Transaction History PDF, a supplement: D31), `classify.py` (asset class guesses), `__init__.py` (detect, parse_file, combine) |
 | `src/meerwaarde/engine/portfolio.py` | FIFO lots per (broker, asset); own-wallet transfers; ISIN conversions; bond redemption at par; foreign cash from LYNX statements |
 | `src/meerwaarde/engine/tax.py` | TaxRules, unit_acquisition, gain_for, max_without_tax, TaxCalculator |
 | `src/meerwaarde/engine/household.py` | Household (people, ownership shares), exemption carry-forward schedule, per-person tax |

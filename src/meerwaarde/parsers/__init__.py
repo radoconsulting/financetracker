@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from . import bitvavo, degiro, degiro_account, degiro_csv, lynx
+from . import bitvavo, degiro, degiro_account, degiro_csv, ibkr_history, lynx
 from ..util import pdf_text
 
 BROKERS = ("Bitvavo", "DEGIRO", "LYNX")
@@ -21,6 +21,7 @@ class ParseResult:
     warnings: list = field(default_factory=list)
     filename: str = ""
     account: object = None              # DEGIRO AccountInfo (account statement)
+    supplement: bool = False            # only counts where the main exports don't reach (LYNX Transaction History)
 
 
 def _open(source):
@@ -83,6 +84,11 @@ def parse_file(source, filename: str = "", broker: str | None = None) -> ParseRe
         data = source.read()
     if not data.lstrip()[:5].startswith(b"%PDF"):
         return parse_csv(decode(data), filename)
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        first_page = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+    if ibkr_history.is_transaction_history(first_page):
+        txns, warns = ibkr_history.parse(io.BytesIO(data), filename)
+        return ParseResult("LYNX", txns, None, warns, filename, supplement=True)
     broker = broker or detect_broker(data)
     if broker == "Bitvavo":
         txns, warns = bitvavo.parse(io.BytesIO(data), filename)
@@ -111,8 +117,30 @@ def _key(t):
             round(t.amount_eur or 0, 2), t.price)
 
 
+def _supplements(results: list[ParseResult]) -> tuple[list[ParseResult], list[str]]:
+    """LYNX Transaction History files: symbols -> ISINs, and only the days after the newest Activity Statement (D31)."""
+    main = [r for r in results if not r.supplement]
+    known = {t.note: t.asset for r in main if r.broker == "LYNX" for t in r.transactions
+             if t.note and len(t.asset) == 12 and t.kind in ("buy", "sell")}
+    ends = [r.statement.period_end for r in main if r.statement is not None and r.statement.period_end]
+    end = max(ends) if ends else None
+    out, notes = [], []
+    for r in results:
+        if not r.supplement:
+            out.append(r)
+            continue
+        notes += ibkr_history.fill_isins(r.transactions, known)
+        kept = [t for t in r.transactions if end is None or t.ts.date() > end]
+        if end is not None:
+            notes.append(f"{r.filename}: {len(kept)} of {len(r.transactions)} rows used (after your newest LYNX statement, "
+                         f"which ends {end:%d-%m-%Y})")
+        out.append(ParseResult(r.broker, kept, None, r.warnings, r.filename, supplement=True))
+    return out, notes
+
+
 def combine(results: list[ParseResult]):
     """Merge parsed files: drop duplicate rows (overlapping exports) and keep the newest LYNX statement info."""
+    results, supplement_notes = _supplements(results)
     seen, txns = {}, []
     for r in results:
         for t in r.transactions:
@@ -123,5 +151,5 @@ def combine(results: list[ParseResult]):
             txns.append(t)
     statements = [r.statement for r in results if r.statement is not None]
     statements.sort(key=lambda s: (s.period_end or s.period_start or 0))
-    warnings = [w for r in results for w in r.warnings]
+    warnings = [w for r in results for w in r.warnings] + supplement_notes
     return txns, statements, warnings

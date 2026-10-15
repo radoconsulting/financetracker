@@ -260,3 +260,61 @@ def test_mapped_formats_round_trip(tmp_path):
     assert mapped.load(tmp_path / "f.json") == [f]
     mapped.load(None)
     assert mapped.FORMATS == []
+
+
+# ---------------------------------------------------------------- IBKR / LYNX Transaction History PDF
+HISTORY_ROWS = [
+    ["2026-10-14", "U***00000", "FX Translations P&L", "Adjustment", "-", "-", "-", "-", "-10.00", "-", "-10.00"],
+    ["2026-09-30", "U***00000", "AAAA(XX000000000 1) Cash Dividend USD 0.10 per Share", "Dividend", "AAAA", "-", "-", "-", "20.00", "-", "20.00"],
+    ["2026-02-19", "U***00000", "ACME WORLD", "Buy", "BBBB", "10.00", "100.00", "EUR", "-1,000.00", "-6.00", "-1,007.20"],
+    ["2026-02-20", "U***00000", "ACME WORLD", "Sell", "BBBB", "4.00", "110.00", "EUR", "440.00", "-6.00", "433.47"],
+    ["2026-01-16", "U***00000", "ACME S&P 500", "Buy", "AAAA", "5.00", "50.00", "EUR", "-250.00", "-6.00", "-256.30"],
+    ["2025-03-05", "U***00000", "Withholding @ 20% on Credit Interest for Feb-2025", "Foreign Tax Withholding", "-", "-", "-", "-", "-0.02", "-", "-0.02"],
+    ["2025-03-05", "U***00000", "EUR Credit Interest for Feb-2025", "Credit Interest", "-", "-", "-", "-", "0.10", "-", "0.10"],
+    ["2025-01-13", "U***00000", "Electronic Fund Transfer", "Deposit", "-", "-", "-", "-", "5,000.00", "-", "5,000.00"],
+    ["2023-09-15", "U***00000", "Net Amount in Base from Forex Trade: -1,000 EUR.USD", "Forex Trade Component", "EUR.USD", "-1,000.00", "1.07", "USD", "2.00", "-4.70", "2.00"],
+    ["2023-09-16", "U***00000", "Something new", "Mystery", "-", "-", "-", "-", "1.00", "-", "1.00"],
+]
+
+
+def test_transaction_history_rows():
+    from meerwaarde.parsers import ibkr_history
+    txns, warns = ibkr_history.parse_rows(HISTORY_ROWS, "history.pdf")
+    kinds = [(t.kind, t.asset) for t in txns]
+    assert kinds == [("dividend", "XX0000000001"), ("buy", "BBBB"), ("sell", "BBBB"), ("buy", "AAAA"),
+                     ("withholding", "EUR"), ("interest", "EUR"), ("cash_in", "EUR"), ("fee", "EUR.USD")]
+    buy = txns[1]
+    assert (buy.qty, buy.gross_eur, buy.fees_eur, buy.total_eur, buy.price, buy.ts) == \
+        (10, 1000.0, 7.2, -1007.2, 100.0, datetime(2026, 2, 19))            # costs = commission + stock exchange tax
+    sell = txns[2]
+    assert (sell.qty, sell.gross_eur, sell.fees_eur, sell.total_eur) == (-4, 440.0, 6.53, 433.47)
+    assert txns[0].amount_eur == 20.0 and txns[-1].amount_eur == -4.7
+    assert any("FX Translations" in w for w in warns) and any("Mystery" in w for w in warns)
+
+
+def test_transaction_history_symbols_and_coverage():
+    from meerwaarde.parsers import ParseResult, combine, ibkr_history
+    from meerwaarde.parsers.lynx import StatementInfo
+    hist, _w = ibkr_history.parse_rows(HISTORY_ROWS, "history.pdf")
+    st = StatementInfo("LYNX", date(2026, 1, 1), date(2026, 2, 19))
+    stmt_row = __import__("meerwaarde.models", fromlist=["Transaction"]).Transaction(
+        "LYNX", datetime(2026, 1, 16), "buy", "XX0000000002", qty=5, gross_eur=250, total_eur=-256.3, note="BBBB")
+    results = [ParseResult("LYNX", [stmt_row], st, [], "statement.pdf"),
+               ParseResult("LYNX", hist, None, [], "history.pdf", supplement=True)]
+    txns, _s, notes = combine(results)
+    added = [t for t in txns if t.source == "history.pdf"]
+    assert [(t.kind, t.asset, t.ts.date()) for t in added] == [("dividend", "XX0000000001", date(2026, 9, 30)),
+                                                              ("sell", "XX0000000002", date(2026, 2, 20))]
+    assert any("2 of 10 rows" in n or "of 8 rows" in n for n in notes)
+    # without a statement every row counts, and a symbol without a known ISIN is reported
+    alone, _w = ibkr_history.parse_rows(HISTORY_ROWS, "history.pdf")
+    warns = ibkr_history.fill_isins(alone, {})
+    assert next(t for t in alone if t.kind == "buy" and t.note == "AAAA").asset == "XX0000000001"   # from its dividend
+    assert any("BBBB" in w for w in warns)
+
+
+def test_transaction_history_detection():
+    from meerwaarde.parsers.ibkr_history import is_transaction_history
+    assert is_transaction_history("Transaction History\nAugust 25, 2023 - October 14, 2026\nDate Account Description "
+                                  "Transaction Type Symbol Quantity Price Price Currency Gross Amount Commission Net Amount")
+    assert not is_transaction_history("Activity Statement\nInteractive Brokers")

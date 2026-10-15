@@ -209,3 +209,9 @@ currency-hedged share classes (noted in the app). Overlap = Σ min(wA, wB) over 
 (the same ISIN at two brokers is one fund): a lower bound. Tried live on 15 October 2026: every ETF had data, about
 8 seconds for the first run. Regression unchanged (the workbook's Allocation sheet isn't in the baseline).
 
+### D31 · LYNX Transaction History is a supplement, statements win where they cover (2026-10-15)
+The Transaction History PDF has per-trade EUR amounts but no ISINs, no positions and no 31-12-2025 prices, so it
+can't replace the Activity Statement (D6). `ParseResult.supplement` marks it; `combine` keeps only its rows after
+the newest LYNX statement's end and maps symbols to ISINs first. Same rule as the Flex sync (D28), and the sync's
+coverage includes these rows so the two never overlap. Regression unchanged (the file isn't in `private/exports`).
+

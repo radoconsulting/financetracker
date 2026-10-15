@@ -95,7 +95,7 @@ with st.sidebar:
     key = st.session_state.setdefault("uploader_key", 0)
     up = st.file_uploader("Add exports (PDF or CSV)", type=["pdf", "csv"], accept_multiple_files=True, key=f"up{key}",
                           help="Bitvavo transaction history (PDF or CSV), DEGIRO Transacties and Rekeningoverzicht (PDF or CSV), "
-                               "LYNX activity statements (one per year), or a CSV format you mapped on the Data tab. Files you "
+                               "LYNX activity statements (one per year) or a Transaction History, or a CSV format you mapped on the Data tab. Files you "
                                f"save in {INBOX} are read too.")
     if up:
         n = save_uploads(up)

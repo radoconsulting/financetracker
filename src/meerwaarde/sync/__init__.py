@@ -137,6 +137,7 @@ def coverage(transactions: list, statements: list) -> dict:
     """What the uploaded exports cover: LYNX up to the newest statement's end; Bitvavo up to its last row and its ids."""
     cov = {}
     ends = [s.period_end for s in statements if getattr(s, "broker", "") == "LYNX" and s.period_end]
+    ends += [t.ts.date() for t in transactions if t.broker == "LYNX" and t.ref == "history"]   # Transaction History
     if ends:
         cov["LYNX"] = max(ends)
     bv = [t for t in transactions if t.broker == "Bitvavo"]

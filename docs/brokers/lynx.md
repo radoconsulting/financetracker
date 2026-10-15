@@ -68,3 +68,18 @@ totals per day. Differences that matter for the code (`sync/flex.py`):
 - EUR: Flex gives `fxRateToBase` per row (the rate of that day); the PDF statement's EUR totals per block differ by a
   few euros on USD dividends. The statement wins for the period it covers (D6, D28).
 - Only 365 days per request; each download is kept, ids (`tradeID`, `transactionID`) make overlaps harmless.
+
+## Transaction History PDF · `parsers/ibkr_history.py` (D31)
+
+*Performance & Reports → Transaction History* gives one table for any period: `Date | Account | Description |
+Transaction Type | Symbol | Quantity | Price | Price Currency | Gross Amount | Commission | Net Amount`, amounts in EUR.
+Recognised by "Transaction History" + "Transaction Type" + "Net Amount" on page 1 (the IBKR name is only a logo).
+Checked against real statements covering the same years: every day equal in quantity; euro amounts equal
+except USD trades and USD dividends (per-trade conversion here, the statement's block totals there: a few euros).
+- Trades have the symbol, not the ISIN: matched to ISINs from the statement/Flex rows of the same symbol, the
+  dividend descriptions in the file ("IUSA(IE0031442068) …", the ISIN often broken over two lines) and the fund
+  catalog; an unmatched symbol stays as is, with a note.
+- Costs = Net − Gross (IBKR commission + stock exchange tax; the Commission column has only the commission).
+- "FX Translations P&L" (revaluation of USD cash) is left out; Forex Trade Component rows only add their commission.
+- It supplements the Activity Statements: its rows count only after the newest statement's end (`combine`), and
+  the Flex sync counts from the end of whichever reaches further.
