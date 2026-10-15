@@ -222,6 +222,30 @@ def cmd_tax_report(a):
         print(f"PDF written to {tax_report_pdf(ytr, _out_path(a.pdf, a.out, f'tax-report-{ytr.year}.pdf'))}")
 
 
+def _pct(v):
+    return "—" if v is None else f"{v:+.1%}"
+
+
+def cmd_performance(a):
+    _check_name(a.xlsx, ".xlsx", "--xlsx")
+    from .engine.performance import DEFAULT_BENCHMARK
+    rep = _build(a)
+    bench = (a.benchmark, a.benchmark) if a.benchmark else DEFAULT_BENCHMARK
+    perf = rep.performance(bench)
+    print(f"\nPerformance {perf.start:%d-%m-%Y} – {perf.end:%d-%m-%Y} · benchmark {bench[1]} ({bench[0]})")
+    print(f"  {'':<8} {'money in':>12} {'money out':>12} {'value':>12} {'gain':>12} {'XIRR/yr':>8} {'TWR/yr':>8} "
+          f"{'bench value':>12} {'bench XIRR':>10}")
+    for l in perf.lines:
+        bv = "—" if l.benchmark_value is None else f"{l.benchmark_value:,.0f}"
+        print(f"  {l.broker:<8} {l.invested:>12,.0f} {l.returned:>12,.0f} {l.value:>12,.0f} {l.gain:>12,.0f} "
+              f"{_pct(l.xirr):>8} {_pct(l.twr_annual):>8} {bv:>12} {_pct(l.benchmark_xirr):>10}")
+    for n in perf.notes:
+        print(f"  Note: {n}")
+    if a.xlsx is not None:
+        from .export import to_xlsx
+        print(f"Excel workbook written to {to_xlsx(rep, _out_path(a.xlsx, a.out, 'performance.xlsx'), perf=perf)}")
+
+
 def cmd_refresh(a):
     from .alerts import read_log, refresh, run_every, send_test
     from .datadir import default_data_dir
@@ -326,6 +350,12 @@ def main(argv=None):
     t.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="write only the Excel version (default tax-report-<year>.xlsx)")
     t.add_argument("--pdf", nargs="?", const="", metavar="FILE", help="write only the PDF version (default tax-report-<year>.pdf)")
     t.set_defaults(func=cmd_tax_report)
+
+    pe = sub.add_parser("performance", help="Money- and time-weighted return per broker, against a benchmark fund")
+    common(pe)
+    pe.add_argument("--benchmark", metavar="ISIN", help="benchmark fund (default iShares MSCI ACWI, IE00B6R52259)")
+    pe.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="also write the Excel workbook (default performance.xlsx)")
+    pe.set_defaults(func=cmd_performance)
 
     rf = sub.add_parser("refresh", help="Refresh prices for the app's data folder and send alerts (run it on a schedule)")
     rf.add_argument("--data-dir", help="the app's data folder (default ~/.local/share/meerwaarde or MEERWAARDE_DATA)")
