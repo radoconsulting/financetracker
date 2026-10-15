@@ -52,7 +52,12 @@ def decode(data: bytes) -> str:
 
 
 def parse_csv(text: str, filename: str = "") -> ParseResult:
-    """A CSV export, recognised by its header row."""
+    """A CSV export, recognised by its header row. A format you mapped yourself wins over the built-in ones."""
+    from . import mapped
+    m = mapped.match(text)
+    if m is not None:
+        txns, warns = mapped.parse_text(text, m, filename)
+        return ParseResult(m.broker, txns, None, warns, filename)
     if degiro_csv.is_degiro_csv(text):
         txns, info, warns = degiro_csv.parse_text(text, filename)
         res = ParseResult("DEGIRO", txns, None, warns, filename)
@@ -63,11 +68,6 @@ def parse_csv(text: str, filename: str = "") -> ParseResult:
     if bitvavo.is_bitvavo_csv(text):
         txns, warns = bitvavo.parse_csv_text(text, filename)
         return ParseResult("Bitvavo", txns, None, warns, filename)
-    from . import mapped
-    m = mapped.match(text)
-    if m is not None:
-        txns, warns = mapped.parse_text(text, m, filename)
-        return ParseResult(m.broker, txns, None, warns, filename)
     raise ValueError(f"{filename or 'file'}: CSV not recognised (DEGIRO Transacties or Rekeningoverzicht, Bitvavo, or a "
                      "format you mapped on the Data tab)")
 

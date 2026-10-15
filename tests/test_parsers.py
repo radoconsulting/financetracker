@@ -1,6 +1,6 @@
 import io
 import zipfile
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -138,3 +138,125 @@ def test_price_response_parsers():
         z.writestr("eurofxref-hist.csv", "Date,USD,JPY,\n2025-12-31,1.1746,184.1,\n2025-12-30,1.1700,183.0,\n")
     rates = fetch.parse_ecb_hist(buf.getvalue())
     assert rates["USD"]["2025-12-31"] == 1.1746
+
+
+# ---------------------------------------------------------------- CSV exports (backlog item 13)
+DEGIRO_TX_NL = (
+    "Datum,Tijd,Product,ISIN,Beurs,Uitvoeringsplaats,Aantal,Koers,,Lokale waarde,,Waarde EUR,Wisselkoers,AutoFX Kosten,"
+    "Transactiekosten en/of kosten van derden EUR,Totaal EUR,Order ID\n"
+    '14-10-2026,09:04,ACME WORLD UCITS ETF,XX0000000001,EAM,XAMS,10,"110,50",EUR,"-1105,00",EUR,"-1105,00",,"0,00","-3,00","-1108,00",abc-1\n'
+    '13-10-2026,15:30,BETA CORP,XX0000000002,NSY,XNYS,-5,"20,00",USD,"100,00",USD,"90,00","1,1111","-0,23","-2,00","87,77",abc-2\n'
+    '01-02-2026,10:00,BUND 2020/30,XX0000000003,TDG,,1000,"99,00",EUR,"-990,00",EUR,"-990,00",,"0,00","-2,00","-992,00",abc-3\n')
+DEGIRO_TX_EN = (
+    "Date;Time;Product;ISIN;Reference exchange;Venue;Quantity;Price;;Local value;;Value EUR;Exchange rate;AutoFX Fee;"
+    "Transaction and/or third party fees EUR;Total EUR;Order ID\n"
+    "14-10-2026;09:04;ACME WORLD UCITS ETF;XX0000000001;EAM;XAMS;10;110.50;EUR;-1105.00;EUR;-1105.00;;0.00;-3.00;-1108.00;abc-1\n")
+DEGIRO_ACC = (
+    "Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id\n"
+    '15-10-2026,07:00,14-10-2026,BETA CORP,XX0000000002,Dividendbelasting,,USD,"-0,30",USD,"1,70",\n'
+    '15-10-2026,07:00,14-10-2026,BETA CORP,XX0000000002,Dividend,,USD,"2,00",USD,"2,00",\n'
+    '16-10-2026,07:00,16-10-2026,,,Valuta Debitering,"1,1000",USD,"-1,70",USD,"0,00",\n'
+    '14-10-2026,09:04,14-10-2026,ACME WORLD UCITS ETF,XX0000000001,Transactiebelasting België,,EUR,"-1,33",EUR,"100,00",abc-1\n'
+    '01-10-2026,08:00,01-10-2026,,,iDEAL storting,,EUR,"500,00",EUR,"500,00",\n')
+
+
+def test_degiro_transacties_csv_dutch_and_english():
+    from meerwaarde.parsers import degiro_csv
+    nl, info, warns = degiro_csv.parse_text(DEGIRO_TX_NL, "Transactions.csv")
+    assert info is None and warns == []
+    buy = next(t for t in nl if t.asset == "XX0000000001")
+    assert (buy.kind, buy.qty, buy.price, buy.price_cur, buy.gross_eur, buy.fees_eur, buy.total_eur, buy.ref) == \
+        ("buy", 10, 110.5, "EUR", 1105.0, 3.0, -1108.0, "abc-1")
+    assert buy.ts == datetime(2026, 10, 14, 9, 4) and buy.asset_class == "ETF"
+    sell = next(t for t in nl if t.asset == "XX0000000002")
+    assert (sell.kind, sell.qty, sell.gross_eur, sell.fees_eur, sell.total_eur) == ("sell", -5, 90.0, pytest.approx(2.23), 87.77)
+    assert next(t for t in nl if t.asset == "XX0000000003").asset_class == "Bond"     # quoted in %
+    en, _i, _w = degiro_csv.parse_text(DEGIRO_TX_EN, "Transactions.csv")
+    assert [(t.qty, t.total_eur, t.fees_eur) for t in en] == [(10, -1108.0, 3.0)]
+
+
+def test_degiro_account_csv_uses_the_statement_rules():
+    from meerwaarde.parsers import degiro_csv
+    txns, info, warns = degiro_csv.parse_text(DEGIRO_ACC, "Account.csv")
+    kinds = {t.kind for t in txns}
+    assert kinds == {"dividend", "withholding", "tob", "cash_in"}
+    div = next(t for t in txns if t.kind == "dividend")
+    assert div.amount_eur == pytest.approx(2.0 / 1.1, abs=0.01)                      # converted at the next USD debit
+    tob = next(t for t in txns if t.kind == "tob")
+    assert (tob.amount_eur, tob.ref) == (-1.33, "separate")
+    assert info.deposits == 500.0
+
+
+def test_degiro_csv_numbers():
+    from meerwaarde.parsers.degiro_csv import number
+    assert [number(x) for x in ("1.234,56", "1,234.56", "-1105,00", "-1105.00", "", "0,5")] == \
+        [1234.56, 1234.56, -1105.0, -1105.0, 0.0, 0.5]
+
+
+def test_parse_file_reads_csv_bytes_and_drops_the_same_trade_from_a_pdf():
+    from meerwaarde.parsers import ParseResult, combine, parse_file
+    r = parse_file(DEGIRO_TX_NL.encode("utf-8-sig"), filename="Transactions.csv")
+    assert r.broker == "DEGIRO" and len(r.transactions) == 3
+    pdf_like = ParseResult("DEGIRO", [t for t in parse_file(DEGIRO_TX_NL.encode(), filename="x.csv").transactions], filename="pdf")
+    txns, _s, _w = combine([r, pdf_like])
+    assert len(txns) == 3                                                            # same rows in two files: once
+    with pytest.raises(ValueError, match="not recognised"):
+        parse_file(b"a,b,c\n1,2,3\n", filename="other.csv")
+
+
+BITVAVO_CSV = (
+    "Timezone,Date,Time,Type,Currency,Amount,Quote Currency,Quote Price,Received / Paid Currency,Received / Paid Amount,"
+    "Fee currency,Fee amount,Status,Transaction ID,Address\n"
+    "Europe/Amsterdam,2026-10-01,10:00:00,buy,BTC,0.002,EUR,50000,EUR,-100.25,EUR,0.25,Completed,t1,\n"
+    "Europe/Amsterdam,2026-10-02,11:00:00,staking,ETH,0.01,,,,,,,Completed,t2,\n"
+    "Europe/Amsterdam,2026-10-03,12:00:00,withdrawal,BTC,-0.0005,,,,,BTC,0.00001,Completed,t3,bc1qexample\n"
+    "Europe/Amsterdam,2026-10-04,12:00:00,deposit,EUR,500,,,,,,,Completed,t4,\n"
+    "Europe/Amsterdam,2026-10-05,12:00:00,buy,ETH,0.1,EUR,2000,EUR,-200.5,EUR,0.5,Canceled,t5,\n")
+
+
+def test_bitvavo_csv_gives_the_same_rows_as_the_pdf():
+    from meerwaarde.parsers import parse_file
+    r = parse_file(BITVAVO_CSV.encode(), filename="bitvavo.csv")
+    assert r.broker == "Bitvavo"
+    kinds = [(t.kind, t.asset) for t in r.transactions]
+    assert kinds == [("buy", "BTC"), ("reward", "ETH"), ("withdrawal", "BTC"), ("cash_in", "EUR")]   # canceled row skipped
+    buy = r.transactions[0]
+    assert (buy.qty, buy.gross_eur, buy.fees_eur, buy.total_eur, buy.ref) == (0.002, 100.0, 0.25, -100.25, "t1")
+    assert buy.ts == datetime(2026, 10, 1, 10, 0)
+    assert r.transactions[2].fee_qty == 0.00001
+
+
+def test_mapped_csv_format():
+    from meerwaarde.parsers import mapped, parse_file
+    text = ("Datum;Type;ISIN;Naam;Aantal;Koers;Munt;Wisselkoers;Kosten;Bedrag\n"
+            "02/10/2026;Aankoop;XX0000000001;ACME WORLD UCITS ETF;10;50,00;EUR;;2,50;\n"
+            "03/10/2026;Verkoop;XX0000000002;BETA CORP;-4;25,00;USD;1,25;1,00;\n"
+            "04/10/2026;Dividend;XX0000000002;BETA CORP;;;USD;1,25;;5,00\n"
+            "05/10/2026;Bewaarloon;;;;;EUR;;;3,00\n"
+            "06/10/2026;Iets anders;;;;;EUR;;;1,00\n")
+    header, delim, _rows = mapped.sniff(text)
+    fmt = mapped.CsvFormat("Test bank", "Testbank", header, dict(date="Datum", type="Type", isin="ISIN", name="Naam",
+                           qty="Aantal", price="Koers", currency="Munt", fx="Wisselkoers", costs="Kosten", amount="Bedrag"),
+                           delimiter=delim, decimal=",", date_format="%d/%m/%Y", fx_inverted=True,
+                           types={"Aankoop": "buy", "Verkoop": "sell", "Dividend": "dividend", "Bewaarloon": "fee"})
+    mapped.FORMATS[:] = [fmt]
+    try:
+        r = parse_file(text.encode(), filename="bank.csv")
+    finally:
+        mapped.FORMATS.clear()
+    assert r.broker == "Testbank"
+    buy, sell, div, fee = r.transactions
+    assert (buy.kind, buy.qty, buy.gross_eur, buy.fees_eur, buy.total_eur) == ("buy", 10, 500.0, 2.5, -502.5)
+    assert (sell.qty, sell.gross_eur, sell.fees_eur, sell.total_eur) == (-4, 80.0, 0.8, 79.2)       # USD / 1.25
+    assert (div.kind, div.amount_eur) == ("dividend", 4.0)
+    assert (fee.kind, fee.amount_eur) == ("fee", -3.0)
+    assert any("Iets anders" in w for w in r.warnings)
+
+
+def test_mapped_formats_round_trip(tmp_path):
+    from meerwaarde.parsers import mapped
+    f = mapped.CsvFormat("A", "Bank A", ["x", "y"], {"date": "x"})
+    mapped.save(tmp_path / "f.json", [f])
+    assert mapped.load(tmp_path / "f.json") == [f]
+    mapped.load(None)
+    assert mapped.FORMATS == []

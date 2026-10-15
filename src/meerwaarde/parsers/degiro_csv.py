@@ -80,7 +80,7 @@ def kind_of(header: list[str]) -> str | None:
     low = {h.lower().strip() for h in header}
     if {"omschrijving", "mutatie"} <= low or {"description", "change"} <= low:
         return "account"
-    if "isin" in low and (low & {"aantal", "quantity", "number"}) and (low & {"koers", "price"}):
+    if "isin" in low and (low & {"aantal", "quantity", "number"}) and (low & {"koers", "price"})             and (low & {"totaal", "totaal eur", "total", "total eur"}):
         return "transactions"
     return None
 
