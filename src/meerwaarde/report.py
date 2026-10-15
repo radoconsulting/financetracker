@@ -377,11 +377,16 @@ def build_report(files, fetch_prices: bool = True, cache_dir=None, options: Port
                  rules: TaxRules | None = None, overrides_csv: str | None = None, today: date | None = None,
                  parsed: list | None = None, profile: TaxProfile | None = None,
                  manual: ManualBook | None = None, reynders: ReyndersBook | None = None,
-                 reynders_rules: ReyndersRules | None = None) -> Report:
+                 reynders_rules: ReyndersRules | None = None, synced: list | None = None) -> Report:
     """`rules.exemption` is the base exemption of `rules.year`; pass rules=None to take it from the profile.
     `manual`: positions no export covers; they are added after the exports are combined (never deduplicated)."""
     results = parsed if parsed is not None else [parse_file(f) for f in files]
     txns, statements, warnings = combine(results)
+    if synced:
+        from .sync import merge_synced
+        added, notes = merge_synced(txns, statements, synced)
+        txns = txns + added
+        warnings = warnings + notes
     manual = manual or ManualBook()
     pf = Portfolio(txns + manual.transactions(), statements, options)
     warnings = warnings + manual.warnings()

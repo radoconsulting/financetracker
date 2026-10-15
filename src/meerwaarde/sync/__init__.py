@@ -56,6 +56,17 @@ class SyncStore:
         self.root = Path(data_dir) / "sync"
         self.flex_dir = self.root / "flex"
         self.bitvavo_file = self.root / "bitvavo" / "history.json"
+        self.settings_file = self.root / "bitvavo" / "settings.json"
+
+    def fee_in_sent(self) -> bool:
+        """Whether a buy's sentAmount includes the fee, as the reconciliation with the PDF found (default: yes)."""
+        if self.settings_file.exists():
+            return bool(json.loads(self.settings_file.read_text(encoding="utf-8") or "{}").get("fee_in_sent", True))
+        return True
+
+    def set_fee_in_sent(self, value: bool):
+        self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+        self.settings_file.write_text(json.dumps({"fee_in_sent": bool(value)}), encoding="utf-8")
 
     # ---------- write ----------
     def save_flex(self, text: str, now: datetime | None = None) -> Path:
@@ -90,7 +101,7 @@ class SyncStore:
         return int(t.timestamp() * 1000)
 
     # ---------- read ----------
-    def load(self, fee_in_sent: bool = True) -> Synced:
+    def load(self, fee_in_sent: bool | None = None) -> Synced:
         from .bitvavo_api import parse_history
         from .flex import parse_flex
         out = Synced([])
@@ -114,7 +125,8 @@ class SyncStore:
             out.flex_positions, out.flex_period = newest.positions, newest.period
         items = self.bitvavo_items()
         if items:
-            txns, warns = parse_history(items, self.bitvavo_file.name, fee_in_sent=fee_in_sent)
+            txns, warns = parse_history(items, self.bitvavo_file.name,
+                                        fee_in_sent=self.fee_in_sent() if fee_in_sent is None else fee_in_sent)
             out.transactions += txns
             out.warnings += warns
             out.files.append(str(self.bitvavo_file.relative_to(self.root)))
@@ -201,7 +213,12 @@ def sync(data_dir, lynx: bool = True, bitvavo: bool = True, secrets: dict | None
                 details = dict(downloaded=len(items), new=new, total=total)
                 if pdf_rows:
                     api_rows, _w = parse_history(store.bitvavo_items())
-                    details["reconcile"] = reconcile(api_rows, pdf_rows)
+                    rec = reconcile(api_rows, pdf_rows)
+                    if rec["buy_fee_rule"] and rec["matched"] >= 5:      # enough overlap to decide
+                        store.set_fee_in_sent(rec["buy_fee_rule"] == "included")
+                        if rec["buy_fee_rule"] == "added":
+                            rec = reconcile(parse_history(store.bitvavo_items(), fee_in_sent=False)[0], pdf_rows)
+                    details["reconcile"] = rec
                 results.append(SyncResult("Bitvavo", True, f"{len(items)} items downloaded, {new} new", details))
             except (BitvavoError, ValueError, OSError) as e:
                 results.append(SyncResult("Bitvavo", False, str(e)))

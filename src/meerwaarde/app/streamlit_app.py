@@ -22,6 +22,7 @@ from meerwaarde.engine.switch import (compare, default_sources, funds_from_json,
 from meerwaarde.funds import CATALOG, WORLD_TARGETS, Fund, lookup
 from meerwaarde import suggest as gemini
 from meerwaarde import alerts as alerting
+from meerwaarde.sync import SyncStore, load_secrets, sync as run_sync
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.manual import ManualBook, ManualPosition, ManualTrade, asset_code
 from meerwaarde.models import ASSET_CLASSES, LAW_TYPES, law_type
@@ -243,6 +244,12 @@ Positions no export covers (a fund at your bank, a tak 23 policy, investment gol
 # ---------------------------------------------------------------- build
 results = [r for _, r in parsed]
 txns, statements, parse_warnings = combine(results)
+synced = SyncStore(DATA).load()
+if synced.transactions:
+    from meerwaarde.sync import merge_synced
+    sync_added, sync_notes = merge_synced(txns, statements, synced.transactions)
+    txns = txns + sync_added
+    parse_warnings = parse_warnings + sync_notes + synced.warnings
 opts = PortfolioOptions(own_wallet_withdrawals=own_wallet, detect_conversions=conversions)
 pf = Portfolio(txns + manual.transactions(), statements, opts)
 rules = TaxRules(year=int(year), exemption=float(exemption), use_original_if_higher=original)
