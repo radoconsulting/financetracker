@@ -2,8 +2,9 @@
 
 Per month-end: the value of every position (units held that day × that day's price, as in engine/performance.py),
 plus cash per broker reconstructed from the rows: deposits − withdrawals + sale proceeds − purchases + income + fees.
-That cash is only right when the exports include every deposit; a broker whose reconstructed cash goes below
-−MAX_GAP at some point is missing deposits, so its cash is left out (positions still count) and a note says so.
+That cash is only right when the exports include every deposit: a broker whose reconstructed cash ends below −MAX_GAP,
+or dips below 2% of its deposits, is missing deposits, so its cash is left out (positions still count) with a note.
+Short dips (a purchase booked before its deposit) are shown as zero.
 Split by broker and by asset class; manual positions are included like any broker.
 """
 from __future__ import annotations
@@ -12,7 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from ..models import BUY, CASH_IN, CASH_OUT, DIVIDEND, FEE, INTEREST, SELL, WITHHOLDING
+from ..models import BUY, CASH_IN, CASH_OUT, DIVIDEND, FEE, INTEREST, REDEMPTION, SELL, WITHHOLDING
 from .allocation import CLASS_BUCKET
 from .performance import PriceSeries, _at, month_ends, units_over_time
 
@@ -40,6 +41,8 @@ def _cash_steps(portfolio) -> dict[str, list[tuple[date, float]]]:
             deltas[t.broker][d] += t.total_eur
         elif t.kind in (CASH_IN, CASH_OUT):
             deltas[t.broker][d] += t.amount_eur if t.amount_eur is not None else t.qty
+        elif t.kind == REDEMPTION:                       # a bond repaid: the payout (its 'sale' row has total 0)
+            deltas[t.broker][d] += t.amount_eur or 0.0
     for i in portfolio.income:
         if i.kind in (DIVIDEND, INTEREST, WITHHOLDING):
             deltas[i.broker][i.date.date()] += i.amount_eur
@@ -84,7 +87,9 @@ def networth(rep, fetch: bool | None = None, start: date | None = None) -> NetWo
     for b, steps in _cash_steps(pf).items():
         series = [_at(steps, d) for d in dates]
         low = min(series) if series else 0.0
-        if low < -MAX_GAP:
+        deposits = sum(t.amount_eur or 0.0 for t in pf.transactions if t.broker == b and t.kind == CASH_IN)
+        # missing deposits pile up until the end; a purchase booked before its deposit only dips for a while
+        if (series and series[-1] < -MAX_GAP) or low < -max(MAX_GAP, 0.02 * deposits):
             notes.append(f"{b}: cash left out; rebuilt from the rows it goes down to €{low:,.0f}, so some deposits aren't "
                          "in the exports (add the account statement, or the broker's deposits).")
             continue
