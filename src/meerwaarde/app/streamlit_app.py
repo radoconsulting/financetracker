@@ -21,6 +21,7 @@ from meerwaarde.engine.switch import (compare, default_sources, funds_from_json,
                                       sources_for, spread_plan)
 from meerwaarde.funds import CATALOG, WORLD_TARGETS, Fund, lookup
 from meerwaarde import suggest as gemini
+from meerwaarde import alerts as alerting
 from meerwaarde.export import XLSX_MIME, default_name, tax_report_xlsx, to_xlsx
 from meerwaarde.manual import ManualBook, ManualPosition, ManualTrade, asset_code
 from meerwaarde.models import ASSET_CLASSES, LAW_TYPES, law_type
@@ -327,7 +328,7 @@ def reynders_panel():
 
 
 tabs = st.tabs(["Overview", "Positions", "Meerwaardebelasting", "Simulator", "Year-end", "Switch", "Tax report",
-                "Tax years", "Prices", "Data", "Manual positions"])
+                "Tax years", "Prices", "Data", "Manual positions", "Alerts"])
 
 # ---------------------------------------------------------------- overview
 with tabs[0]:
@@ -936,6 +937,78 @@ with tabs[10]:
     manual_editor(manual, "manual-editor")
     if manual.positions:
         st.dataframe(rep.manual_table(), hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------- alerts
+with tabs[11]:
+    st.subheader("Scheduled refresh and alerts")
+    st.caption("`meerwaarde refresh` fetches fresh prices for this data folder and sends a message when the tax-free room "
+               "drops below your threshold, a position moves more than your percentage since its last alert, or a price "
+               "can't be found. Run it on a schedule (see below); this page only holds the settings.")
+    cfg = alerting.AlertSettings.load(DATA / "alerts.json")
+    with st.form("alerts-form"):
+        a1, a2, a3 = st.columns(3)
+        room_on = a1.checkbox("Tax-free room below", value=cfg.room_below is not None)
+        room_v = a1.number_input("Threshold (€)", min_value=0.0, step=100.0, value=float(cfg.room_below or 1000.0))
+        move_on = a2.checkbox("Position moves more than", value=cfg.move_pct is not None)
+        move_v = a2.number_input("Percentage", min_value=0.5, step=0.5, value=float(cfg.move_pct or 10.0))
+        missing_on = a3.checkbox("A price can't be found", value=cfg.missing_prices)
+        amounts = a3.checkbox("Include amounts in messages", value=cfg.include_amounts,
+                              help="Off by default: an ntfy.sh topic can be read by anyone who knows its name.")
+        st.markdown("**ntfy** (push to your phone)")
+        n1, n2 = st.columns([3, 2])
+        ntfy_url = n1.text_input("Topic URL", value=cfg.ntfy.url, placeholder="https://ntfy.sh/a-long-random-topic-name",
+                                 help="Use a long random topic on ntfy.sh, or your own ntfy server with an access token.")
+        ntfy_env = n2.text_input("Token environment variable", value=cfg.ntfy.token_env,
+                                 help="The token itself is never stored here; set this variable where refresh runs.")
+        st.markdown("**E-mail** (SMTP)")
+        e1, e2, e3, e4 = st.columns([3, 1, 2, 2])
+        host = e1.text_input("Server", value=cfg.email.host, placeholder="smtp.example.org")
+        port = e2.number_input("Port", min_value=1, max_value=65535, value=int(cfg.email.port))
+        user = e3.text_input("User", value=cfg.email.user)
+        pw_env = e4.text_input("Password environment variable", value=cfg.email.password_env)
+        e5, e6, e7 = st.columns([3, 3, 1])
+        sender = e5.text_input("From", value=cfg.email.sender)
+        to = e6.text_input("To (comma-separated)", value=cfg.email.to)
+        tls = e7.checkbox("STARTTLS", value=cfg.email.starttls)
+        if st.form_submit_button("Save alert settings"):
+            alerting.AlertSettings(room_v if room_on else None, move_v if move_on else None, missing_on, amounts,
+                                   alerting.NtfySettings(ntfy_url.strip(), ntfy_env.strip()),
+                                   alerting.EmailSettings(host.strip(), int(port), tls, user.strip(), sender.strip(),
+                                                          to.strip(), pw_env.strip())).save(DATA / "alerts.json")
+            st.toast("Saved")
+            st.rerun()
+    b1, b2 = st.columns(2)
+    if b1.button("Send a test message", disabled=not cfg.channels, width="stretch",
+                 help="Uses the saved settings and the environment variables of this app's process."):
+        errs = alerting.send_test(DATA)
+        (st.error("; ".join(errs)) if errs else st.success("Test message sent."))
+    if b2.button("Preview: what would be sent now", width="stretch",
+                 help="Uses the prices already loaded; sends nothing and leaves the alert state unchanged."):
+        prev = alerting.Snapshot.load(DATA / "alerts" / "state.json")
+        found, _ = alerting.evaluate(prev, alerting.snapshot(rep), cfg)
+        if found:
+            for al in found:
+                st.markdown(f"- **{al.title}**: {al.message(True)}")
+        else:
+            st.info("Nothing to report compared with the last refresh.")
+    log = alerting.read_log(DATA)
+    if log:
+        st.markdown("**Last runs**")
+        st.dataframe(pd.DataFrame([dict(at=r["at"], positions=r["positions"], price_errors=r["price_errors"],
+                                        alerts="; ".join(a["title"] for a in r["alerts"]) or "none", sent=r["sent"],
+                                        errors="; ".join(r["errors"])) for r in log]), hide_index=True, width="stretch")
+    else:
+        st.caption("No scheduled refresh has run yet.")
+    with st.expander("How to schedule it"):
+        st.markdown(f"""
+- **Synology NAS (Docker)**: Control Panel → Task Scheduler → Create → Scheduled task → User-defined script, daily:
+  `docker exec meerwaarde meerwaarde refresh --data-dir /data`. Or run a second container with
+  `meerwaarde refresh --data-dir /data --every 24` (see the README).
+- **Linux cron**: `0 7 * * * meerwaarde refresh --data-dir {DATA}`
+- **Windows Task Scheduler**: `schtasks /Create /SC DAILY /ST 07:00 /TN meerwaarde-refresh /TR "meerwaarde refresh --data-dir {DATA}"`
+- Secrets: set `{cfg.ntfy.token_env}` and `{cfg.email.password_env}` in the environment of the scheduled task or container.
+- Try it first with `meerwaarde refresh --dry-run`, then `meerwaarde refresh --test`.
+""")
 
 # ---------------------------------------------------------------- export (sidebar, after everything is computed)
 with st.sidebar:
