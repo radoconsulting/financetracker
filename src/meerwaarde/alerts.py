@@ -277,3 +277,12 @@ def run_every(data_dir, hours: float, send: bool = True, sleep=time.sleep, runs:
         n += 1
         if runs is None or n < runs:
             sleep(hours * 3600)
+
+
+def send_test(data_dir, post=None, smtp_factory=None, env=os.environ) -> list[str]:
+    """Send a test message on every channel that is set up. Returns errors."""
+    settings = AlertSettings.load(DataDir(data_dir).alerts)
+    if not settings.channels:
+        return ["no channel set up (ntfy URL or e-mail server)"]
+    return notify(settings, [Alert("test", "", "meerwaarde test", "Test message: alerts reach you here.")],
+                  post, smtp_factory, env)

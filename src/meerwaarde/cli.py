@@ -222,6 +222,39 @@ def cmd_tax_report(a):
         print(f"PDF written to {tax_report_pdf(ytr, _out_path(a.pdf, a.out, f'tax-report-{ytr.year}.pdf'))}")
 
 
+def cmd_refresh(a):
+    from .alerts import read_log, refresh, run_every, send_test
+    from .datadir import default_data_dir
+    d = Path(a.data_dir).expanduser() if a.data_dir else default_data_dir()
+    if not d.exists():
+        sys.exit(f"Data folder not found: {d}")
+    if a.test:
+        errs = send_test(d)
+        if errs:
+            sys.exit("Test failed: " + "; ".join(errs))
+        print("Test message sent.")
+        return
+    if a.every:
+        run_every(d, a.every, send=not a.dry_run)
+        return
+    r = refresh(d, send=not a.dry_run, fetch=not a.offline)
+    print(f"Refreshed {r.positions} positions on {r.on}; {r.price_errors} price lookups failed.")
+    for al in r.alerts:
+        print(f"  [{al.kind}] {al.message(True)}")
+    if not r.alerts:
+        print("  No alerts.")
+    if a.dry_run:
+        print("Dry run: nothing sent.")
+    elif r.sent:
+        print("Notification sent.")
+    for e in r.errors:
+        print(f"  Not sent: {e}")
+    if a.verbose:
+        print(f"Log: {len(read_log(d))} runs in {d / 'alerts' / 'log.jsonl'}")
+    if r.errors and not a.dry_run and r.alerts:
+        sys.exit(1)
+
+
 def cmd_app(a):
     try:
         import streamlit  # noqa: F401
@@ -293,6 +326,15 @@ def main(argv=None):
     t.add_argument("--xlsx", nargs="?", const="", metavar="FILE", help="write only the Excel version (default tax-report-<year>.xlsx)")
     t.add_argument("--pdf", nargs="?", const="", metavar="FILE", help="write only the PDF version (default tax-report-<year>.pdf)")
     t.set_defaults(func=cmd_tax_report)
+
+    rf = sub.add_parser("refresh", help="Refresh prices for the app's data folder and send alerts (run it on a schedule)")
+    rf.add_argument("--data-dir", help="the app's data folder (default ~/.local/share/meerwaarde or MEERWAARDE_DATA)")
+    rf.add_argument("--dry-run", action="store_true", help="evaluate and log the alerts, send nothing")
+    rf.add_argument("--offline", action="store_true", help="use cached and your own prices only")
+    rf.add_argument("--every", type=float, metavar="HOURS", help="keep running and refresh every HOURS (for a container)")
+    rf.add_argument("--test", action="store_true", help="send a test message on the channels in alerts.json")
+    rf.add_argument("-v", "--verbose", action="store_true")
+    rf.set_defaults(func=cmd_refresh)
 
     w = sub.add_parser("app", help="Start the web app")
     w.add_argument("--port", type=int, default=8501)
