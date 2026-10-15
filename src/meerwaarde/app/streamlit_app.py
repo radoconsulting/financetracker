@@ -663,6 +663,17 @@ with tabs[4]:
 
 # ---------------------------------------------------------------- switch planner
 with tabs[5]:
+    flags = rep.red_flags()
+    if flags:
+        st.subheader("Red flags in your funds")
+        st.caption("What costs you money every year, with a like-for-like cheaper fund from the catalog where there is one. "
+                   "Use the planner below to see what switching costs now.")
+        st.dataframe(rep.red_flags_table(flags), hide_index=True, width="stretch", column_config={
+            "isin": None, "alternative_isin": None, "name": "Fund",
+            "value_eur": st.column_config.NumberColumn("Value", format=EUR),
+            "flags": st.column_config.TextColumn("What costs money", width="large"),
+            "per_year_eur": st.column_config.NumberColumn("Per year (estimate)", format=EUR),
+            "alternative": "Cheaper alternative", "why": "Why this one"})
     st.subheader("Switch to another fund")
     st.caption("Sell positions and buy a target fund: the cost now against the yearly effect, and a sw_plan that spreads the "
                "sales over the years so each year stays within the exemption.")

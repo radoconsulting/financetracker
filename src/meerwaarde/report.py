@@ -276,6 +276,23 @@ class Report:
                      benchmark=None if p.benchmark is None else round(p.benchmark, 2)) for p in perf.points.get(broker, [])]
         return pd.DataFrame(rows, columns=["date", "value", "invested", "benchmark"])
 
+    # ---------- fund red flags ----------
+    def red_flags(self):
+        from .engine.redflags import check_funds
+        if "_flags" not in self.__dict__:
+            self.__dict__["_flags"] = check_funds(self)
+        return self.__dict__["_flags"]
+
+    @staticmethod
+    def red_flags_table(checks) -> pd.DataFrame:
+        rows = [dict(isin=c.isin, name=c.name, value_eur=c.value, flags=" · ".join(f.text for f in c.flags),
+                     per_year_eur=round(c.per_year, 2) if c.per_year else None,
+                     alternative=f"{c.alternative.ticker} {c.alternative.name}".strip() if c.alternative else "",
+                     alternative_isin=c.alternative.isin if c.alternative else "", why=c.alternative_why)
+                for c in checks]
+        return pd.DataFrame(rows, columns=["isin", "name", "value_eur", "flags", "per_year_eur", "alternative",
+                                           "alternative_isin", "why"])
+
     # ---------- fees and costs ----------
     def costs(self, fetch: bool | None = None) -> Costs:
         cache = self.__dict__.setdefault("_costs", {})

@@ -49,7 +49,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 HEAD_ALIGN = Alignment(wrap_text=True, vertical="center")
 
 SHEETS = ("Summary", "Positions", "Sales", "Income", "Meerwaardebelasting", "Exemption", "Income tax", "Simulator",
-          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Manual positions", "Prices",
+          "Year-end", "Switch", "Reynders tax", "Performance", "Allocation", "Net worth", "Costs", "Red flags", "Manual positions", "Prices",
           "How calculated")
 
 
@@ -279,6 +279,10 @@ def _allocation_sheet(ws, rep: Report, al) -> None:
     for n in al.notes:
         _write(ws, row, 1, n, NOTE)
         row += 1
+
+FLAGS = [Col("isin", "ISIN", width=15), Col("name", "Fund", width=34), Col("value_eur", "Value (€)", EUR, 14),
+         Col("flags", "What costs money", width=70), Col("per_year_eur", "Per year (€, estimate)", EUR, 14),
+         Col("alternative", "Cheaper alternative", width=40), Col("why", "Why this one", width=34)]
 
 
 def _costs_sheet(ws, rep: Report, c) -> None:
@@ -847,6 +851,7 @@ def build_workbook(rep: Report, simulation: Simulation | None = None, harvest=No
     _allocation_sheet(sheets["Allocation"], rep, alloc if alloc is not None else rep.allocation())
     _networth_sheet(sheets["Net worth"], rep, nw if nw is not None else rep.networth())
     _costs_sheet(sheets["Costs"], rep, cost if cost is not None else rep.costs())
+    _table(sheets["Red flags"], FLAGS, _records(rep.red_flags_table(rep.red_flags())))
     _reynders_sheet(sheets["Reynders tax"], rep.reynders_table(), rep.tax.reynders.rules.rate,
                     REYNDERS_NOTES + rep.reynders_flags())
     _table(sheets["Manual positions"], MANUAL, _records(rep.manual_table()))
